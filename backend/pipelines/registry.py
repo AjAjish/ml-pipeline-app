@@ -1,0 +1,133 @@
+# backend/pipelines/registry.py
+from typing import Dict, List, Any
+from enum import Enum
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, GradientBoostingRegressor, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.naive_bayes import GaussianNB
+from xgboost import XGBRegressor, XGBClassifier
+from lightgbm import LGBMRegressor, LGBMClassifier
+
+class ProblemType(str, Enum):
+    REGRESSION = "regression"
+    CLASSIFICATION = "classification"
+
+class AlgorithmRegistry:
+    def __init__(self):
+        self.registry = {
+            ProblemType.REGRESSION: self._get_regression_algorithms(),
+            ProblemType.CLASSIFICATION: self._get_classification_algorithms()
+        }
+    
+    def _get_regression_algorithms(self) -> Dict[str, Any]:
+        """Get regression algorithms with default parameters"""
+        return {
+            "LinearRegression": {
+                "model": LinearRegression(),
+                "description": "Ordinary least squares linear regression",
+                "parameters": {}
+            },
+            "Ridge": {
+                "model": Ridge(random_state=42),
+                "description": "Linear regression with L2 regularization",
+                "parameters": {"alpha": 1.0}
+            },
+            "Lasso": {
+                "model": Lasso(random_state=42),
+                "description": "Linear regression with L1 regularization",
+                "parameters": {"alpha": 1.0}
+            },
+            "DecisionTreeRegressor": {
+                "model": DecisionTreeRegressor(random_state=42),
+                "description": "Decision tree regressor",
+                "parameters": {"max_depth": 5}
+            },
+            "RandomForestRegressor": {
+                "model": RandomForestRegressor(random_state=42, n_estimators=100),
+                "description": "Random forest regressor",
+                "parameters": {"n_estimators": 100, "max_depth": 10}
+            },
+            "GradientBoostingRegressor": {
+                "model": GradientBoostingRegressor(random_state=42, n_estimators=100),
+                "description": "Gradient boosting regressor",
+                "parameters": {"n_estimators": 100, "learning_rate": 0.1}
+            },
+            "XGBRegressor": {
+                "model": XGBRegressor(random_state=42, n_estimators=100),
+                "description": "XGBoost regressor",
+                "parameters": {"n_estimators": 100}
+            },
+            "LGBMRegressor": {
+                "model": LGBMRegressor(random_state=42, n_estimators=100),
+                "description": "LightGBM regressor",
+                "parameters": {"n_estimators": 100}
+            }
+        }
+    
+    def _get_classification_algorithms(self) -> Dict[str, Any]:
+        """Get classification algorithms with default parameters"""
+        return {
+            "LogisticRegression": {
+                "model": LogisticRegression(random_state=42, max_iter=1000),
+                "description": "Logistic regression classifier",
+                "parameters": {"C": 1.0}
+            },
+            "KNeighborsClassifier": {
+                "model": KNeighborsClassifier(),
+                "description": "K-nearest neighbors classifier",
+                "parameters": {"n_neighbors": 5}
+            },
+            "DecisionTreeClassifier": {
+                "model": DecisionTreeClassifier(random_state=42),
+                "description": "Decision tree classifier",
+                "parameters": {"max_depth": 5}
+            },
+            "RandomForestClassifier": {
+                "model": RandomForestClassifier(random_state=42, n_estimators=100),
+                "description": "Random forest classifier",
+                "parameters": {"n_estimators": 100, "max_depth": 10}
+            },
+            "SVC": {
+                "model": SVC(random_state=42, probability=True),
+                "description": "Support Vector Classifier",
+                "parameters": {"C": 1.0}
+            },
+            "GradientBoostingClassifier": {
+                "model": GradientBoostingClassifier(random_state=42, n_estimators=100),
+                "description": "Gradient boosting classifier",
+                "parameters": {"n_estimators": 100, "learning_rate": 0.1}
+            },
+            "GaussianNB": {
+                "model": GaussianNB(),
+                "description": "Gaussian Naive Bayes",
+                "parameters": {}
+            },
+            "XGBClassifier": {
+                "model": XGBClassifier(random_state=42, n_estimators=100),
+                "description": "XGBoost classifier",
+                "parameters": {"n_estimators": 100}
+            },
+            "LGBMClassifier": {
+                "model": LGBMClassifier(random_state=42, n_estimators=100),
+                "description": "LightGBM classifier",
+                "parameters": {"n_estimators": 100}
+            }
+        }
+    
+    def get_algorithms(self, problem_type: ProblemType) -> Dict[str, Any]:
+        """Get algorithms for a specific problem type"""
+        return self.registry.get(problem_type, {})
+    
+    def get_algorithm(self, problem_type: ProblemType, algorithm_name: str) -> Any:
+        """Get specific algorithm"""
+        algorithms = self.get_algorithms(problem_type)
+        if algorithm_name not in algorithms:
+            raise ValueError(f"Algorithm '{algorithm_name}' not found for problem type '{problem_type}'")
+        return algorithms[algorithm_name]["model"]
+    
+    def get_algorithm_list(self, problem_type: ProblemType) -> List[str]:
+        """Get list of algorithm names for a problem type"""
+        algorithms = self.get_algorithms(problem_type)
+        return list(algorithms.keys())
