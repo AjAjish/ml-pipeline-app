@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Brain, 
@@ -14,61 +14,40 @@ import {
   Download,
   HelpCircle,
   Bell,
-  User
+  User,
+  TrendingUp
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ThemeToggle } from './ThemeToggle';
+import toast from 'react-hot-toast';
 
 const navigation = [
   { name: 'Home', href: '/', icon: Home },
-  { name: 'Upload', href: '/upload', icon: Upload },
+  { name: 'Dataset', href: '/dataset', icon: Database },
   { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
-  { name: 'Models', href: '/models', icon: Cpu },
-  { name: 'Datasets', href: '/datasets', icon: Database },
-  { name: 'Downloads', href: '/downloads', icon: Download },
-];
-
-const features = [
-  {
-    title: 'CSV Upload',
-    description: 'Drag & drop any CSV dataset',
-    icon: Upload,
-    gradient: 'from-blue-500 to-cyan-500'
-  },
-  {
-    title: 'Auto Validation',
-    description: 'Smart dataset validation & cleaning',
-    icon: Database,
-    gradient: 'from-purple-500 to-pink-500'
-  },
-  {
-    title: 'Multi-Algorithm',
-    description: '12+ ML algorithms trained simultaneously',
-    icon: Cpu,
-    gradient: 'from-orange-500 to-red-500'
-  },
-  {
-    title: 'Real-time Training',
-    description: 'Live progress tracking',
-    icon: BarChart3,
-    gradient: 'from-green-500 to-emerald-500'
-  },
-  {
-    title: 'XAI Integration',
-    description: 'Explainable AI with SHAP & LIME',
-    icon: Brain,
-    gradient: 'from-indigo-500 to-blue-500'
-  },
-  {
-    title: 'Model Export',
-    description: 'Download trained models for production',
-    icon: Download,
-    gradient: 'from-violet-500 to-purple-500'
-  },
 ];
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleResultsNavigation = () => {
+    const sessionId = localStorage.getItem('automl_session_id');
+    const fileId = localStorage.getItem('automl_file_id');
+
+    if (sessionId) {
+      // User has trained a model, go to results
+      navigate(`/results/${sessionId}`);
+    } else if (fileId) {
+      // User has uploaded dataset but not trained, go to dashboard
+      toast.info('Please train your model first');
+      navigate('/dashboard');
+    } else {
+      // No data uploaded, go to home
+      toast.info('Please upload a dataset first');
+      navigate('/');
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -123,6 +102,15 @@ export default function Layout() {
                     <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
                   </NavLink>
                 ))}
+                {/* Results Button */}
+                <button
+                  onClick={handleResultsNavigation}
+                  className="group relative px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  <TrendingUp className="h-4 w-4 mr-2 inline-block" />
+                  Results
+                  <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
+                </button>
               </nav>
 
               {/* Right side */}
@@ -185,6 +173,17 @@ export default function Layout() {
                 <span>{item.name}</span>
               </NavLink>
             ))}
+            {/* Results Button in Mobile */}
+            <button
+              onClick={() => {
+                handleResultsNavigation();
+                setSidebarOpen(false);
+              }}
+              className="flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 w-full"
+            >
+              <TrendingUp className="h-5 w-5" />
+              <span>Results</span>
+            </button>
           </nav>
           <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between px-2">
@@ -201,44 +200,6 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
-
-      {/* Features Showcase */}
-      <section className="py-16 px-4">
-        <div className="mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">✨ Complete AutoML Pipeline</h2>
-            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Everything you need for automated machine learning in one platform
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className={cn(
-                  "glass-card p-6 group hover:scale-[1.02] transition-all duration-300",
-                  "hover:shadow-2xl hover:shadow-blue-500/10"
-                )}
-              >
-                <div className="flex items-start space-x-4">
-                  <div className={`p-3 rounded-xl bg-gradient-to-br ${feature.gradient}`}>
-                    <feature.icon className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
-                    <p className="text-gray-600 dark:text-gray-400 text-sm">
-                      {feature.description}
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="glass-effect border-t mt-16">

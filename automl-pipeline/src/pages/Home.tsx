@@ -45,6 +45,11 @@ const Home = () => {
       clearInterval(interval);
       setUploadProgress(100);
       
+      // Store file ID in localStorage
+      localStorage.setItem('automl_file_id', result.file_id);
+      // Clear any previous session ID on new upload
+      localStorage.removeItem('automl_session_id');
+      
       toast.success('Dataset uploaded successfully!');
       
       // Navigate to dashboard with dataset info

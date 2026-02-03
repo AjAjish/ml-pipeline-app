@@ -7,6 +7,7 @@ import { ApiProvider } from './contexts/ApiContext';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
+import DataSet from './pages/DataSet';
 import Results from './pages/Results';
 import NotFound from './pages/NotFound';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -30,6 +31,7 @@ function App() {
               <Route element={<Layout />}>
                 <Route index element={<Home />} />
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="dataset" element={<DataSet />} />
                 <Route path="results/:sessionId" element={<Results />} />
                 <Route path="404" element={<NotFound />} />
                 <Route path="*" element={<Navigate to="/404" replace />} />

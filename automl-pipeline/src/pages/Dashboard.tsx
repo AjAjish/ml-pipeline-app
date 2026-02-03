@@ -103,23 +103,34 @@ const Dashboard = () => {
     }
 
     setIsTraining(true);
+    const trainingToast = toast.loading('Training models... This may take a few minutes.');
+    
     try {
       const trainingData = {
         file_id: fileId!,
         target_column: selectedTarget,
         problem_type: problemType,
         selected_algorithms: selectedAlgorithms,
-        ...config,
+        test_size: config.testSize,
+        random_state: config.randomState,
+        cv_folds: config.cvFolds,
       };
 
       const results = await trainModels(trainingData);
+      toast.dismiss(trainingToast);
       toast.success('Training completed successfully!');
+      
+      // Store session ID in localStorage
+      localStorage.setItem('automl_session_id', results.session_id);
       
       navigate(`/results/${results.session_id}`, { 
         state: { results } 
       });
-    } catch (error) {
-      toast.error('Training failed');
+    } catch (error: any) {
+      toast.dismiss(trainingToast);
+      const errorMessage = error.response?.data?.detail || error.message || 'Training failed. Please try again.';
+      toast.error(errorMessage, { duration: 6000 });
+      console.error('Training error:', error);
     } finally {
       setIsTraining(false);
     }
