@@ -9,6 +9,7 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import DataSet from './pages/DataSet';
 import Results from './pages/Results';
+import Documentation from './pages/Documentation';
 import NotFound from './pages/NotFound';
 import { ThemeToggle } from './components/ThemeToggle';
 
@@ -33,6 +34,7 @@ function App() {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="dataset" element={<DataSet />} />
                 <Route path="results/:sessionId" element={<Results />} />
+                <Route path="docs" element={<Documentation />} />
                 <Route path="404" element={<NotFound />} />
                 <Route path="*" element={<Navigate to="/404" replace />} />
               </Route>
