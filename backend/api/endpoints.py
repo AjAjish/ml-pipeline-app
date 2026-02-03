@@ -69,6 +69,45 @@ async def get_columns(file_id: str):
     
     return dataset_info
 
+@router.get("/dataset/{file_id}/preview")
+async def get_dataset_preview(file_id: str, rows: int = 100):
+    """Get dataset preview with specified number of rows"""
+    if file_id not in datasets:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    df = datasets[file_id]["dataframe"]
+    
+    # Limit rows to prevent large responses
+    max_rows = min(rows, 1000)
+    preview_df = df.head(max_rows)
+    
+    # Convert to JSON-serializable format
+    data = preview_df.to_dict(orient='records')
+    columns = list(df.columns)
+    
+    return {
+        "file_id": file_id,
+        "columns": columns,
+        "data": data,
+        "total_rows": len(df),
+        "preview_rows": len(preview_df)
+    }
+
+@router.get("/datasets")
+async def get_all_datasets():
+    """Get list of all uploaded datasets"""
+    dataset_list = []
+    for file_id, info in datasets.items():
+        df = info["dataframe"]
+        dataset_list.append({
+            "file_id": file_id,
+            "rows": df.shape[0],
+            "columns": df.shape[1],
+            "upload_time": info["upload_time"]
+        })
+    
+    return {"datasets": dataset_list}
+
 @router.post("/validate/{file_id}")
 async def validate_dataset(file_id: str, target_column: Optional[str] = None):
     """Validate dataset"""

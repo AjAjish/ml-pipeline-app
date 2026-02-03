@@ -60,8 +60,9 @@ api.interceptors.response.use(
                     error.message || 
                     'An error occurred';
     
-    // Don't show toast for 401 errors (handled by auth)
-    if (error.response?.status !== 401) {
+    // Don't show automatic toast for 401 errors or training endpoint (handled manually)
+    const isTrainingEndpoint = error.config?.url?.includes('/api/train');
+    if (error.response?.status !== 401 && !isTrainingEndpoint) {
       toast.error(message, {
         duration: 5000,
       });
@@ -96,6 +97,16 @@ export const getDatasetInfo = async (fileId: string): Promise<any> => {
   return api.get(`/api/columns/${fileId}`);
 };
 
+export const getDatasetPreview = async (fileId: string, rows: number = 100): Promise<any> => {
+  return api.get(`/api/dataset/${fileId}/preview`, {
+    params: { rows },
+  });
+};
+
+export const getAllDatasets = async (): Promise<any> => {
+  return api.get('/api/datasets');
+};
+
 export const validateDataset = async (fileId: string, targetColumn?: string): Promise<any> => {
   return api.post(`/api/validate/${fileId}`, null, {
     params: targetColumn ? { target_column: targetColumn } : {},
@@ -115,7 +126,10 @@ export const trainModels = async (trainingData: {
   random_state?: number;
   cv_folds?: number;
 }): Promise<any> => {
-  return api.post('/api/train', trainingData);
+  // Use longer timeout for training (10 minutes)
+  return api.post('/api/train', trainingData, {
+    timeout: 600000, // 10 minutes
+  });
 };
 
 export const getVisualizations = async (sessionId: string, plotType = 'all'): Promise<any> => {
