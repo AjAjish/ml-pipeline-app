@@ -249,4 +249,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# uploads
+backend/uploads/
+
+# created models
+!backend/models/__init__.py
+!backend/models/*.py
 
