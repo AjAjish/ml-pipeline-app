@@ -253,6 +253,7 @@ yarn-error.log*
 backend/uploads/
 
 # created models
+backend/models/
 !backend/models/__init__.py
-!backend/models/*.py
+!backend/models/ml_models.py
 
