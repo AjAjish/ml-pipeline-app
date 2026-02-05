@@ -25,6 +25,7 @@ const navigation = [
   { name: 'Home', href: '/', icon: Home },
   { name: 'Dataset', href: '/dataset', icon: Database },
   { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
+  { name: 'Algorithms', href: '/algorithms', icon: Cpu },
 ];
 
 export default function Layout() {
