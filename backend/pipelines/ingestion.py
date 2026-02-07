@@ -1,6 +1,7 @@
 #ml-pipeline-app/backend/pipelines/ingestion.py
 import pandas as pd
-from typing import Dict, Any
+import numpy as np
+from typing import Dict, Any, Optional
 
 class DataIngestion:
     def __init__(self,file_path: str):
@@ -15,17 +16,26 @@ class DataIngestion:
         except Exception as e:
             print(f"Error loading data: {e}")
 
-    def get_data_info(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def get_data_info(self, df: pd.DataFrame, file_id: Optional[str] = None) -> Dict[str, Any]:
         """Get comprehensive dataset information"""
         from api.schemas import DatasetInfo, ColumnInfo
         columns_info = []
         for col in df.columns:
+            raw_value = df[col].iloc[0] if len(df) > 0 else None
+            if pd.isna(raw_value):
+                example_value = None
+            elif isinstance(raw_value, (np.generic,)):
+                example_value = raw_value.item()
+            elif isinstance(raw_value, (pd.Timestamp, pd.Timedelta)):
+                example_value = raw_value.isoformat()
+            else:
+                example_value = raw_value
             col_info = ColumnInfo(
                 name=col,
                 dtype=str(df[col].dtype),
                 unique_count=int(df[col].nunique()),
                 missing_count=int(df[col].isnull().sum()),
-                example_value=df[col].iloc[0] if len(df) > 0 else None,
+                example_value=example_value,
             )
             columns_info.append(col_info)
         
@@ -33,17 +43,21 @@ class DataIngestion:
         dtypes_summary = {str(k): int(v) for k, v in df.dtypes.value_counts().items()}
 
         return DatasetInfo(
-            file_id="",
+            file_id=file_id or "",
             columns=columns_info,
-            shape={'rows':df.shape[0],'columns':df.shape[1]},
+            shape={'rows': int(df.shape[0]), 'columns': int(df.shape[1])},
             memory_usage=f"{int(df.memory_usage(deep=True).sum() / 1024 / 1024)} MB",
             dtypes_summary=dtypes_summary,
             )
     
-    def dedect_problem_type(self, traget_column: str) ->str:
-        #Detect if problem is classification or regression based on target column
+    def dedect_problem_type(self, traget_column: str = None) -> str:
+        #Detect if problem is classification, regression, or clustering based on target column
         if self.df is None:
             raise Exception("Data not loaded. Call load_data() first.")
+        
+        # If no target column, it's clustering (unsupervised learning)
+        if traget_column is None:
+            return "clustering"
         
         target_series = self.df[traget_column] 
 

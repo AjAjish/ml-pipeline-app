@@ -7,6 +7,7 @@ import numpy as np
 class ProblemType(str, Enum):
     REGRESSION = "regression"
     CLASSIFICATION = "classification"
+    CLUSTERING = "clustering"
 
 class UploadResponse(BaseModel):
     filename: str
@@ -31,7 +32,7 @@ class DatasetInfo(BaseModel):
 
 class TrainingRequest(BaseModel):
     file_id: str
-    target_column: str
+    target_column: Optional[str] = None
     problem_type: ProblemType
     selected_algorithms: List[str]
     test_size: float = Field(0.2, ge=0.1, le=0.5)

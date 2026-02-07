@@ -65,7 +65,7 @@ async def get_columns(file_id: str):
     
     df = datasets[file_id]["dataframe"]
     ingestor = DataIngestion(datasets[file_id]["file_path"])
-    dataset_info = ingestor.get_data_info(df)
+    dataset_info = ingestor.get_data_info(df, file_id=file_id)
     
     return dataset_info
 
@@ -155,8 +155,8 @@ async def train_models(request: TrainingRequest, background_tasks: BackgroundTas
     # Get dataset
     df = datasets[request.file_id]["dataframe"]
     
-    # Validate target column exists
-    if request.target_column not in df.columns:
+    # Validate target column for supervised learning
+    if request.problem_type != "clustering" and request.target_column not in df.columns:
         raise HTTPException(
             status_code=400, 
             detail=f"Target column '{request.target_column}' not found in dataset"
@@ -172,7 +172,16 @@ async def train_models(request: TrainingRequest, background_tasks: BackgroundTas
             problem_type=request.problem_type
         )
         
-        X_train, X_test, y_train, y_test = transformer.transform(df)
+        transform_result = transformer.transform(df)
+        
+        # Handle both clustering (returns 4 Nones) and supervised learning (returns train/test splits)
+        if len(transform_result) == 4:
+            X_train, X_test, y_train, y_test = transform_result
+        else:
+            X_train, _, _, _ = transform_result
+            X_test = None
+            y_train = None
+            y_test = None
         
         # Model training
         trainer = ModelTrainer(
@@ -183,8 +192,17 @@ async def train_models(request: TrainingRequest, background_tasks: BackgroundTas
             cv_folds=request.cv_folds
         )
         
-        # Train models
-        trained_models = trainer.train_models(X_train, y_train)
+        # Train models (pass None for y_train in clustering)
+        if request.problem_type == "clustering":
+            trained_models = trainer.train_models(X_train, None)
+            # For clustering, use full data for evaluation
+            X_eval = X_train
+            y_eval = None
+        else:
+            trained_models = trainer.train_models(X_train, y_train)
+            X_eval = X_test
+            y_eval = y_test
+        
         training_history = trainer.get_training_history()
         
         # Evaluate models
@@ -194,14 +212,15 @@ async def train_models(request: TrainingRequest, background_tasks: BackgroundTas
             training_history=training_history
         )
         
-        evaluation_results = evaluator.evaluate_all(X_test, y_test)
+        evaluation_results = evaluator.evaluate_all(X_eval, y_eval)
         
-        # Get feature importance for best model
+        # Get feature importance for best model (only for tree-based supervised models)
         feature_importance = None
-        if hasattr(trained_models[evaluation_results["best_model"]], 'feature_importances_'):
+        best_model = trained_models.get(evaluation_results["best_model"])
+        if request.problem_type != "clustering" and best_model and hasattr(best_model, 'feature_importances_'):
             importance_dict = dict(zip(
                 X_train.columns,
-                trained_models[evaluation_results["best_model"]].feature_importances_
+                best_model.feature_importances_
             ))
             feature_importance = dict(sorted(
                 importance_dict.items(), 
@@ -235,7 +254,7 @@ async def train_models(request: TrainingRequest, background_tasks: BackgroundTas
         return EvaluationResults(
             session_id=session_id,
             problem_type=request.problem_type,
-            target_column=request.target_column,
+            target_column=request.target_column or "N/A (Clustering)",
             models=models_metrics,
             best_model=evaluation_results["best_model"],
             feature_importance=feature_importance,

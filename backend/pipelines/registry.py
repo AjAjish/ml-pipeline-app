@@ -1,6 +1,11 @@
 # backend/pipelines/registry.py
 from typing import Dict, List, Any
 from enum import Enum
+from sklearn.cluster import (
+    KMeans, MiniBatchKMeans, AgglomerativeClustering, DBSCAN, OPTICS,
+    MeanShift, SpectralClustering, Birch, AffinityPropagation
+)
+from sklearn.mixture import GaussianMixture
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, GradientBoostingRegressor, GradientBoostingClassifier
@@ -13,12 +18,14 @@ from lightgbm import LGBMRegressor, LGBMClassifier
 class ProblemType(str, Enum):
     REGRESSION = "regression"
     CLASSIFICATION = "classification"
+    CLUSTERING = "clustering"
 
 class AlgorithmRegistry:
     def __init__(self):
         self.registry = {
             ProblemType.REGRESSION: self._get_regression_algorithms(),
-            ProblemType.CLASSIFICATION: self._get_classification_algorithms()
+            ProblemType.CLASSIFICATION: self._get_classification_algorithms(),
+            ProblemType.CLUSTERING: self._get_clustering_algorithms()
         }
     
     def _get_regression_algorithms(self) -> Dict[str, Any]:
@@ -113,6 +120,60 @@ class AlgorithmRegistry:
                 "model": LGBMClassifier(random_state=42, n_estimators=100),
                 "description": "LightGBM classifier",
                 "parameters": {"n_estimators": 100}
+            }
+        }
+    
+    def _get_clustering_algorithms(self) -> Dict[str, Any]:
+        return {
+            "KMeans": {
+                "model": KMeans(),
+                "description": "Partition-based clustering using centroids",
+                "parameters": {"n_clusters": 3}
+            },
+            "MiniBatchKMeans": {
+                "model": MiniBatchKMeans(),
+                "description": "Faster KMeans using mini-batches",
+                "parameters": {"n_clusters": 3}
+            },
+            "AgglomerativeClustering": {
+                "model": AgglomerativeClustering(),
+                "description": "Hierarchical bottom-up clustering",
+                "parameters": {"n_clusters": 3}
+            },
+            "DBSCAN": {
+                "model": DBSCAN(),
+                "description": "Density-based clustering with noise detection",
+                "parameters": {"eps": 0.5, "min_samples": 5}
+            },
+            "OPTICS": {
+                "model": OPTICS(),
+                "description": "Density-based clustering for varying densities",
+                "parameters": {}
+            },
+            "MeanShift": {
+                "model": MeanShift(),
+                "description": "Centroid-based clustering using kernel density",
+                "parameters": {}
+            },
+            "SpectralClustering": {
+                "model": SpectralClustering(),
+                "description": "Graph-based clustering using eigenvectors",
+                "parameters": {"n_clusters": 3}
+            },
+            "Birch": {
+                "model": Birch(),
+                "description": "Hierarchical clustering for large datasets",
+                "parameters": {"n_clusters": 3}
+            },
+            "GaussianMixture": {
+                "model": GaussianMixture(),
+                "description": "Probabilistic clustering using Gaussian distributions",
+                "parameters": {"n_components": 3}
+            },
+            "AffinityPropagation": {
+                "model": AffinityPropagation(),
+                "description": "Message-passing based clustering",
+                "parameters": {}
             }
         }
     

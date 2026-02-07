@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 import lime
 import lime.lime_tabular
 from sklearn.preprocessing import StandardScaler
+from pipelines.registry import ProblemType
 
 class XAIExplainer:
     """Main XAI explanation engine"""
@@ -140,3 +141,67 @@ class LIMEExplainer:
             'feature_importance': feature_importance,
             'prediction': float(self.model.predict(instance)[0])
         }
+
+
+class ClusteringExplainer:
+    """Explanations for clustering results"""
+    
+    def __init__(self, model, X_data, feature_names):
+        self.model = model
+        self.X_data = X_data
+        self.feature_names = feature_names
+        self.cluster_labels = None
+        
+    def compute_cluster_characteristics(self) -> Dict[str, Any]:
+        """Compute characteristics for each cluster"""
+        if not hasattr(self.model, 'labels_'):
+            self.model.fit(self.X_data)
+        
+        self.cluster_labels = self.model.labels_
+        characteristics = {}
+        
+        n_clusters = len(np.unique(self.cluster_labels))
+        
+        for cluster_id in range(n_clusters):
+            cluster_mask = self.cluster_labels == cluster_id
+            cluster_data = self.X_data[cluster_mask]
+            
+            characteristics[f"Cluster_{cluster_id}"] = {
+                "size": int(cluster_mask.sum()),
+                "percentage": float(100 * cluster_mask.sum() / len(self.cluster_labels)),
+                "mean_features": dict(zip(self.feature_names, cluster_data.mean(axis=0).tolist())),
+                "std_features": dict(zip(self.feature_names, cluster_data.std(axis=0).tolist())),
+            }
+        
+        return characteristics
+    
+    def get_cluster_centers(self) -> Optional[Dict[str, List[float]]]:
+        """Get cluster centers if available"""
+        if hasattr(self.model, 'cluster_centers_'):
+            centers = {}
+            for idx, center in enumerate(self.model.cluster_centers_):
+                centers[f"Cluster_{idx}"] = center.tolist()
+            return centers
+        return None
+    
+    def get_feature_importance_per_cluster(self) -> Dict[str, Dict[str, float]]:
+        """Get feature importance per cluster based on variance"""
+        if not hasattr(self.model, 'labels_'):
+            self.model.fit(self.X_data)
+        
+        importance_per_cluster = {}
+        n_clusters = len(np.unique(self.model.labels_))
+        
+        for cluster_id in range(n_clusters):
+            cluster_mask = self.model.labels_ == cluster_id
+            cluster_data = self.X_data[cluster_mask]
+            
+            # Use variance as importance metric
+            variance = cluster_data.var(axis=0)
+            importance = variance / (variance.sum() + 1e-8)
+            
+            importance_per_cluster[f"Cluster_{cluster_id}"] = dict(
+                zip(self.feature_names, importance.tolist())
+            )
+        
+        return importance_per_cluster

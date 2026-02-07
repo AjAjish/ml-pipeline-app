@@ -1,10 +1,11 @@
 # backend/pipelines/training.py
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Union, Optional
 import time
 from datetime import datetime
 from sklearn.model_selection import cross_val_score, StratifiedKFold, KFold
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -22,7 +23,7 @@ class ModelTrainer:
         self.trained_models = {}
         self.training_history = {}
     
-    def train_models(self, X_train: pd.DataFrame, y_train: pd.Series) -> Dict[str, Any]:
+    def train_models(self, X_train: pd.DataFrame, y_train: Optional[pd.Series] = None) -> Dict[str, Any]:
         """Train multiple models"""
         self.trained_models = {}
         
@@ -38,12 +39,19 @@ class ModelTrainer:
                 # Start timer
                 start_time = time.time()
                 
-                # Perform cross-validation
-                cv_scores = self._perform_cross_validation(algo_info, X_train, y_train)
-                
-                # Train final model
-                model = algo_info
-                model.fit(X_train, y_train)
+                # Different training for clustering vs supervised learning
+                if self.problem_type == ProblemType.CLUSTERING:
+                    # For clustering, no cross-validation needed
+                    model = algo_info
+                    model.fit(X_train)
+                    cv_scores = np.array([silhouette_score(X_train, model.labels_)])
+                else:
+                    # Perform cross-validation for supervised learning
+                    cv_scores = self._perform_cross_validation(algo_info, X_train, y_train)
+                    
+                    # Train final model
+                    model = algo_info
+                    model.fit(X_train, y_train)
                 
                 # End timer
                 training_time = time.time() - start_time

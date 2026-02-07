@@ -5,10 +5,12 @@ from typing import Dict, List, Any, Tuple
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, 
     confusion_matrix, classification_report,
-    mean_squared_error, mean_absolute_error, r2_score
+    mean_squared_error, mean_absolute_error, r2_score,
+    silhouette_score, calinski_harabasz_score, davies_bouldin_score
 )
 import json
 from datetime import datetime
+from typing import Optional
 
 from pipelines.registry import ProblemType
 
@@ -19,7 +21,7 @@ class ModelEvaluator:
         self.training_history = training_history or {}
         self.evaluation_results = {}
     
-    def evaluate_all(self, X_test: pd.DataFrame, y_test: pd.Series) -> Dict[str, Any]:
+    def evaluate_all(self, X_test: pd.DataFrame, y_test: Optional[pd.Series] = None) -> Dict[str, Any]:
         """Evaluate all trained models"""
         self.evaluation_results = {"models": {}, "best_model": None}
         
@@ -28,11 +30,14 @@ class ModelEvaluator:
         
         for model_name, model in self.models.items():
             try:
-                # Make predictions
-                y_pred = model.predict(X_test)
+                # Make predictions/cluster assignments
+                if self.problem_type == ProblemType.CLUSTERING:
+                    y_pred = model.fit_predict(X_test)
+                else:
+                    y_pred = model.predict(X_test)
                 
                 # Calculate metrics
-                metrics = self._calculate_metrics(y_test, y_pred, model_name)
+                metrics = self._calculate_metrics(X_test, y_test, y_pred, model_name)
                 
                 # Get training metadata if available
                 training_info = self.training_history.get(model_name, {})
@@ -45,16 +50,18 @@ class ModelEvaluator:
                 
                 self.evaluation_results["models"][model_name] = result_entry
                 
-                # Update best model
-                if self.problem_type == ProblemType.REGRESSION:
+                # Update best model based on problem type
+                if self.problem_type == ProblemType.CLUSTERING:
+                    # For clustering, use Silhouette score (higher is better)
+                    score = metrics["metrics"].get("silhouette_score", -1)
+                elif self.problem_type == ProblemType.REGRESSION:
                     # For regression, use R2 score (higher is better)
                     score = metrics["metrics"].get("r2", -np.inf)
                 else:
                     # For classification, use F1 score
                     score = metrics["metrics"].get("f1", 0)
                 
-                if (self.problem_type == ProblemType.REGRESSION and score > best_score) or \
-                   (self.problem_type == ProblemType.CLASSIFICATION and score > best_score):
+                if score > best_score:
                     best_score = score
                     best_model = model_name
                     
@@ -66,11 +73,30 @@ class ModelEvaluator:
         
         return self.evaluation_results
     
-    def _calculate_metrics(self, y_true: pd.Series, y_pred: np.ndarray, model_name: str) -> Dict[str, Any]:
+    def _calculate_metrics(self, X_test: pd.DataFrame, y_true: Optional[pd.Series], y_pred: np.ndarray, model_name: str) -> Dict[str, Any]:
         """Calculate evaluation metrics"""
         metrics = {}
         
-        if self.problem_type == ProblemType.REGRESSION:
+        if self.problem_type == ProblemType.CLUSTERING:
+            # Clustering metrics
+            try:
+                metrics["silhouette_score"] = float(silhouette_score(X_test, y_pred))
+            except:
+                metrics["silhouette_score"] = 0.0
+            
+            try:
+                metrics["calinski_harabasz_score"] = float(calinski_harabasz_score(X_test, y_pred))
+            except:
+                metrics["calinski_harabasz_score"] = 0.0
+            
+            try:
+                metrics["davies_bouldin_score"] = float(davies_bouldin_score(X_test, y_pred))
+            except:
+                metrics["davies_bouldin_score"] = 0.0
+            
+            metrics["n_clusters"] = len(np.unique(y_pred))
+            
+        elif self.problem_type == ProblemType.REGRESSION:
             # Regression metrics
             metrics = {
                 "mse": float(mean_squared_error(y_true, y_pred)),
