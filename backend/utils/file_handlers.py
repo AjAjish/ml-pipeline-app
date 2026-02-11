@@ -53,3 +53,13 @@ def load_dataset(file_path: str) -> Optional[pd.DataFrame]:
             raise ValueError(f"Unsupported file format: {file_extension}")
     except Exception as e:
         raise Exception(f"Error loading dataset: {str(e)}")
+    
+def clear_upload_directory_files(upload_dir: str = "uploads/"):
+    """Clear all files in the upload directory"""
+    if os.path.exists(upload_dir):
+        for filename in os.listdir(upload_dir):
+            file_path = os.path.join(upload_dir, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)

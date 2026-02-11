@@ -20,6 +20,8 @@ class ModelTrainer:
         self.random_state = random_state
         self.cv_folds = cv_folds
         self.algorithm_registry = AlgorithmRegistry()
+        if not self.selected_algorithms:
+            self.selected_algorithms = self.algorithm_registry.get_algorithm_list(self.problem_type)
         self.trained_models = {}
         self.training_history = {}
     

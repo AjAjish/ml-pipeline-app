@@ -13,7 +13,14 @@ from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB
 from xgboost import XGBRegressor, XGBClassifier
-from lightgbm import LGBMRegressor, LGBMClassifier
+import numpy as np
+from distutils.version import LooseVersion
+
+try:
+    from lightgbm import LGBMRegressor, LGBMClassifier
+except Exception:
+    LGBMRegressor = None
+    LGBMClassifier = None
 
 class ProblemType(str, Enum):
     REGRESSION = "regression"
@@ -30,7 +37,7 @@ class AlgorithmRegistry:
     
     def _get_regression_algorithms(self) -> Dict[str, Any]:
         """Get regression algorithms with default parameters"""
-        return {
+        algorithms = {
             "LinearRegression": {
                 "model": LinearRegression(),
                 "description": "Ordinary least squares linear regression",
@@ -52,9 +59,14 @@ class AlgorithmRegistry:
                 "parameters": {"max_depth": 5}
             },
             "RandomForestRegressor": {
-                "model": RandomForestRegressor(random_state=42, n_estimators=100),
+                "model": RandomForestRegressor(
+                    random_state=42,
+                    n_estimators=50,
+                    max_depth=12,
+                    n_jobs=-1
+                ),
                 "description": "Random forest regressor",
-                "parameters": {"n_estimators": 100, "max_depth": 10}
+                "parameters": {"n_estimators": 50, "max_depth": 12, "n_jobs": -1}
             },
             "GradientBoostingRegressor": {
                 "model": GradientBoostingRegressor(random_state=42, n_estimators=100),
@@ -66,16 +78,20 @@ class AlgorithmRegistry:
                 "description": "XGBoost regressor",
                 "parameters": {"n_estimators": 100}
             },
-            "LGBMRegressor": {
+        }
+
+        if LGBMRegressor is not None and LooseVersion(np.__version__) < LooseVersion("2.0.0"):
+            algorithms["LGBMRegressor"] = {
                 "model": LGBMRegressor(random_state=42, n_estimators=100),
                 "description": "LightGBM regressor",
                 "parameters": {"n_estimators": 100}
             }
-        }
+
+        return algorithms
     
     def _get_classification_algorithms(self) -> Dict[str, Any]:
         """Get classification algorithms with default parameters"""
-        return {
+        algorithms = {
             "LogisticRegression": {
                 "model": LogisticRegression(random_state=42, max_iter=1000),
                 "description": "Logistic regression classifier",
@@ -92,9 +108,14 @@ class AlgorithmRegistry:
                 "parameters": {"max_depth": 5}
             },
             "RandomForestClassifier": {
-                "model": RandomForestClassifier(random_state=42, n_estimators=100),
+                "model": RandomForestClassifier(
+                    random_state=42,
+                    n_estimators=50,
+                    max_depth=12,
+                    n_jobs=-1
+                ),
                 "description": "Random forest classifier",
-                "parameters": {"n_estimators": 100, "max_depth": 10}
+                "parameters": {"n_estimators": 50, "max_depth": 12, "n_jobs": -1}
             },
             "SVC": {
                 "model": SVC(random_state=42, probability=True),
@@ -116,12 +137,16 @@ class AlgorithmRegistry:
                 "description": "XGBoost classifier",
                 "parameters": {"n_estimators": 100}
             },
-            "LGBMClassifier": {
+        }
+
+        if LGBMClassifier is not None and LooseVersion(np.__version__) < LooseVersion("2.0.0"):
+            algorithms["LGBMClassifier"] = {
                 "model": LGBMClassifier(random_state=42, n_estimators=100),
                 "description": "LightGBM classifier",
                 "parameters": {"n_estimators": 100}
             }
-        }
+
+        return algorithms
     
     def _get_clustering_algorithms(self) -> Dict[str, Any]:
         return {

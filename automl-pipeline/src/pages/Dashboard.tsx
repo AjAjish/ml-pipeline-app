@@ -35,7 +35,7 @@ const Dashboard = () => {
   const [datasetInfo, setDatasetInfo] = useState<any>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>('');
-  const [problemType, setProblemType] = useState<'classification' | 'regression'>('classification');
+  const [problemType, setProblemType] = useState<'classification' | 'regression' | 'clustering'>('classification');
   const [selectedAlgorithms, setSelectedAlgorithms] = useState<string[]>([]);
   const [algorithms, setAlgorithms] = useState<any>({});
   const [isTraining, setIsTraining] = useState(false);
@@ -80,9 +80,20 @@ const Dashboard = () => {
       
       if (result.is_valid) {
         toast.success('Dataset validation passed!');
-        // Load algorithms for the problem type
-        const algoData = await getAlgorithms(problemType);
-        setAlgorithms(algoData.algorithms);
+        if (result.problem_type) {
+          setProblemType(result.problem_type);
+          const algoData = await getAlgorithms(result.problem_type);
+          setAlgorithms(algoData.algorithms);
+          if (Array.isArray(result.suggested_algorithms)) {
+            const available = new Set(Object.keys(algoData.algorithms || {}));
+            setSelectedAlgorithms(
+              result.suggested_algorithms.filter((algo: string) => available.has(algo))
+            );
+          }
+        } else {
+          const algoData = await getAlgorithms(problemType);
+          setAlgorithms(algoData.algorithms);
+        }
       } else {
         toast.error('Dataset validation failed');
       }
@@ -92,7 +103,7 @@ const Dashboard = () => {
   };
 
   const handleTrain = async () => {
-    if (!selectedTarget) {
+    if (!selectedTarget && problemType !== 'clustering') {
       toast.error('Please select a target column');
       return;
     }
@@ -108,7 +119,7 @@ const Dashboard = () => {
     try {
       const trainingData = {
         file_id: fileId!,
-        target_column: selectedTarget,
+        target_column: problemType === 'clustering' ? undefined : selectedTarget,
         problem_type: problemType,
         selected_algorithms: selectedAlgorithms,
         test_size: config.testSize,
@@ -358,6 +369,21 @@ const Dashboard = () => {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {validationResult.problem_type && (
+                  <div className="pt-2 text-sm text-gray-700 dark:text-gray-300">
+                    <div>
+                      <span className="font-medium">Detected problem type:</span>{' '}
+                      <span className="capitalize">{validationResult.problem_type}</span>
+                    </div>
+                    {Array.isArray(validationResult.suggested_algorithms) && (
+                      <div>
+                        <span className="font-medium">Suggested algorithms:</span>{' '}
+                        {validationResult.suggested_algorithms.length}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

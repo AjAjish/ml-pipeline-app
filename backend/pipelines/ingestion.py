@@ -63,9 +63,10 @@ class DataIngestion:
 
         # check if target is numeric
         if pd.api.types.is_numeric_dtype(target_series):
-            unique_value = target_series.unique()
+            unique_values = target_series.dropna().unique()
+            unique_count = len(unique_values)
             # Heuristic: if unique values < 20% of total rows, likely classification
-            if unique_value < 0.2 * len(target_series) and unique_value <= 50:
+            if unique_count < 0.2 * len(target_series) and unique_count <= 50:
                 return "classification"
             else:
                 return "regression"

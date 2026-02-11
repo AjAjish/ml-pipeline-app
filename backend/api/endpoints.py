@@ -16,7 +16,7 @@ from pipelines.validation import DataValidator
 from pipelines.transformation import DataTransformer
 from pipelines.training import ModelTrainer
 from pipelines.evaluation import ModelEvaluator
-from pipelines.registry import AlgorithmRegistry
+from pipelines.registry import AlgorithmRegistry, ProblemType as PipelineProblemType
 from utils.file_handlers import save_uploaded_file
 from core.config import settings
 
@@ -118,12 +118,21 @@ async def validate_dataset(file_id: str, target_column: Optional[str] = None):
     validator = DataValidator(df)
     
     validation_results = validator.validate_all(target_column)
+
+    ingestor = DataIngestion(datasets[file_id]["file_path"])
+    ingestor.df = df
+    problem_type = ingestor.dedect_problem_type(target_column)
+
+    registry = AlgorithmRegistry()
+    suggested_algorithms = registry.get_algorithm_list(PipelineProblemType(problem_type))
     
     return {
         "file_id": file_id,
         "is_valid": validation_results["is_valid"],
         "validation_report": validation_results["report"],
-        "warnings": validation_results["warnings"]
+        "warnings": validation_results["warnings"],
+        "problem_type": problem_type,
+        "suggested_algorithms": suggested_algorithms
     }
 
 @router.get("/algorithms/{problem_type}")

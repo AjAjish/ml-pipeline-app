@@ -23,8 +23,9 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Show loading indicator for non-GET requests
-    if (config.method !== 'get') {
+    // Show loading indicator for non-GET requests (skip training requests)
+    const isTrainingEndpoint = config.url?.includes('/api/train');
+    if (config.method !== 'get' && !isTrainingEndpoint) {
       const loadingId = toast.loading('Processing...');
       (config as any).loadingId = loadingId;
     }
@@ -113,22 +114,22 @@ export const validateDataset = async (fileId: string, targetColumn?: string): Pr
   });
 };
 
-export const getAlgorithms = async (problemType: 'classification' | 'regression'): Promise<any> => {
+export const getAlgorithms = async (problemType: 'classification' | 'regression' | 'clustering'): Promise<any> => {
   return api.get(`/api/algorithms/${problemType}`);
 };
 
 export const trainModels = async (trainingData: {
   file_id: string;
-  target_column: string;
-  problem_type: 'classification' | 'regression';
+  target_column?: string;
+  problem_type: 'classification' | 'regression' | 'clustering';
   selected_algorithms: string[];
   test_size?: number;
   random_state?: number;
   cv_folds?: number;
 }): Promise<any> => {
-  // Use longer timeout for training (10 minutes)
+  // No timeout so the client waits until training completes.
   return api.post('/api/train', trainingData, {
-    timeout: 600000, // 10 minutes
+    timeout: 0,
   });
 };
 
@@ -205,7 +206,7 @@ export const mockAlgorithms = {
     'RandomForestClassifier': {
       model: 'RandomForestClassifier',
       description: 'Random forest classifier',
-      parameters: { n_estimators: 100, max_depth: 10 }
+      parameters: { n_estimators: 50, max_depth: 10 }
     },
     'GradientBoostingClassifier': {
       model: 'GradientBoostingClassifier',

@@ -9,12 +9,38 @@ from sklearn.preprocessing import (
     StandardScaler, LabelEncoder, OneHotEncoder,
     MinMaxScaler, RobustScaler
 )
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 import warnings
 
 warnings.filterwarnings("ignore")
+
+
+class OutlierCapper(BaseEstimator, TransformerMixin):
+    def __init__(self, factor: float = 1.5):
+        self.factor = factor
+        self.lower_bounds_ = None
+        self.upper_bounds_ = None
+
+    def fit(self, X: Any, y: Any = None) -> "OutlierCapper":
+        X_array = np.asarray(X)
+        q1 = np.nanpercentile(X_array, 25, axis=0)
+        q3 = np.nanpercentile(X_array, 75, axis=0)
+        iqr = q3 - q1
+        self.lower_bounds_ = q1 - self.factor * iqr
+        self.upper_bounds_ = q3 + self.factor * iqr
+        return self
+
+    def transform(self, X: Any) -> np.ndarray:
+        X_array = np.asarray(X)
+        return np.clip(X_array, self.lower_bounds_, self.upper_bounds_)
+
+    def get_feature_names_out(self, input_features: Optional[List[str]] = None) -> List[str]:
+        if input_features is None:
+            return []
+        return list(input_features)
 
 class DataTransformer:
     def __init__(self, target_column: Optional[str] = None, problem_type: str = "regression"):
@@ -57,6 +83,8 @@ class DataTransformer:
         # Create preprocessing pipelines
         numeric_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='median')),
+            # Cap outliers before scaling for more stable feature ranges.
+            ('outliers', OutlierCapper(factor=1.5)),
             ('scaler', StandardScaler())
         ])
 
@@ -117,7 +145,10 @@ class DataTransformer:
             return self._get_feature_names(numeric_features, categorical_features)
 
         if hasattr(self.prepeocessor, "get_feature_names_out"):
-            return list(self.prepeocessor.get_feature_names_out())
+            try:
+                return list(self.prepeocessor.get_feature_names_out())
+            except Exception:
+                return self._get_feature_names(numeric_features, categorical_features)
 
         return self._get_feature_names(numeric_features, categorical_features)
 
@@ -142,8 +173,14 @@ class DataTransformer:
         X_transformed = self.prepeocessor.transform(X)
 
         if hasattr(self.prepeocessor, "get_feature_names_out"):
-            all_feature_names = list(self.prepeocessor.get_feature_names_out())
+            try:
+                all_feature_names = list(self.prepeocessor.get_feature_names_out())
+            except Exception:
+                all_feature_names = []
         else:
+            all_feature_names = []
+
+        if not all_feature_names:
             numeric_features = []
             categorical_features = []
 

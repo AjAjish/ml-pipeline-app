@@ -79,7 +79,7 @@ const Home = () => {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
     },
     maxFiles: 1,
-    maxSize: 100 * 1024 * 1024, // 100MB
+    maxSize: 200 * 1024 * 1024, // 200MB
   });
 
   const workflowSteps = [

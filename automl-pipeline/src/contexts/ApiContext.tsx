@@ -13,7 +13,7 @@ interface ApiContextType extends ApiState {
   uploadDataset: (file: File) => Promise<any>;
   getDatasetInfo: (fileId: string) => Promise<any>;
   validateDataset: (fileId: string, targetColumn?: string) => Promise<any>;
-  getAlgorithms: (problemType: 'classification' | 'regression') => Promise<any>;
+  getAlgorithms: (problemType: 'classification' | 'regression' | 'clustering') => Promise<any>;
   trainModels: (trainingData: any) => Promise<any>;
   getSessionResults: (sessionId: string) => Promise<any>;
   downloadModel: (sessionId: string, modelName: string) => Promise<void>;
@@ -111,7 +111,7 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     }
   }, [setLoading, setError]);
 
-  const getAlgorithms = useCallback(async (problemType: 'classification' | 'regression'): Promise<any> => {
+  const getAlgorithms = useCallback(async (problemType: 'classification' | 'regression' | 'clustering'): Promise<any> => {
     setLoading(true);
     try {
       // For development, return mock data if API fails
