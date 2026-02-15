@@ -8,6 +8,8 @@ numpy==1.24.3
 pandas==2.1.3
 scikit-learn==1.3.2
 joblib==1.3.2
+onnx==1.15.0
+skl2onnx==1.16.0
 
 # Visualization
 matplotlib==3.8.0

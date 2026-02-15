@@ -114,7 +114,9 @@ const Dashboard = () => {
     }
 
     setIsTraining(true);
-    const trainingToast = toast.loading('Training models... This may take a few minutes.');
+    toast.loading(`Training ${selectedAlgorithms.length} models... Waiting for completion.`, {
+      id: 'training-loading'
+    });
     
     try {
       const trainingData = {
@@ -127,22 +129,77 @@ const Dashboard = () => {
         cv_folds: config.cvFolds,
       };
 
-      const results = await trainModels(trainingData);
-      toast.dismiss(trainingToast);
-      toast.success('Training completed successfully!');
+      // Start training (returns immediately with session_id)
+      const startResponse = await trainModels(trainingData);
+      const sessionId = startResponse.session_id;
       
-      // Store session ID in localStorage
-      localStorage.setItem('automl_session_id', results.session_id);
+      // Poll for progress
+      let previousCompletedCount = 0;
+      let isComplete = false;
       
-      navigate(`/results/${results.session_id}`, { 
-        state: { results } 
-      });
+      const progressInterval = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`http://localhost:8000/api/training-progress/${sessionId}`);
+          const progress = await progressResponse.json();
+          
+          // Show toast for each newly completed model
+          const newlyCompleted = progress.completed_models.length - previousCompletedCount;
+          if (newlyCompleted > 0) {
+            for (let i = 0; i < newlyCompleted; i++) {
+              const modelName = progress.completed_models[previousCompletedCount + i];
+              toast.success(`✓ ${modelName} trained successfully!`);
+            }
+            previousCompletedCount = progress.completed_models.length;
+          }
+          
+          // Check if training is complete
+          if (progress.status === 'completed') {
+            isComplete = true;
+            clearInterval(progressInterval);
+            
+            // Fetch final results
+            const resultsResponse = await fetch(`http://localhost:8000/api/training-results/${sessionId}`);
+            const results = await resultsResponse.json();
+            
+            toast.dismiss('training-loading');
+            toast.success('🎉 Training completed successfully!');
+            
+            // Store session ID in localStorage
+            localStorage.setItem('automl_session_id', sessionId);
+            
+            // Navigate to results
+            navigate(`/results/${sessionId}`, { 
+              state: { results } 
+            });
+          } else if (progress.status === 'failed') {
+            isComplete = true;
+            clearInterval(progressInterval);
+            toast.dismiss('training-loading');
+            toast.error(`Training failed: ${progress.error}`);
+          }
+        } catch (error) {
+          // Silently continue polling, network error might be temporary
+        }
+      }, 500);
+      
+      // Timeout if training takes too long (30 minutes)
+      const timeoutId = setTimeout(() => {
+        if (!isComplete) {
+          clearInterval(progressInterval);
+          toast.dismiss('training-loading');
+          toast.error('Training timeout. Please check the server.');
+          setIsTraining(false);
+        }
+      }, 30 * 60 * 1000);
+      
+      // Store timeout ID for potential cleanup
+      (window as any).trainingTimeoutId = timeoutId;
+      
     } catch (error: any) {
-      toast.dismiss(trainingToast);
+      toast.dismiss('training-loading');
       const errorMessage = error.response?.data?.detail || error.message || 'Training failed. Please try again.';
       toast.error(errorMessage, { duration: 6000 });
       console.error('Training error:', error);
-    } finally {
       setIsTraining(false);
     }
   };
@@ -368,6 +425,45 @@ const Dashboard = () => {
                           <span>{warning}</span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {validationResult.validation_report?.cleaning_plan && (
+                  <div className="pt-2 text-sm text-gray-700 dark:text-gray-300">
+                    <div className="font-medium mb-2">Data Cleaning Plan</div>
+                    <div className="space-y-1">
+                      <div>
+                        <span className="font-medium">Missing values:</span>{' '}
+                        <span>
+                          Numeric = {validationResult.validation_report.cleaning_plan.missing_values?.numeric_strategy},
+                          Categorical = {validationResult.validation_report.cleaning_plan.missing_values?.categorical_strategy}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-medium">Duplicates:</span>{' '}
+                        <span>
+                          {validationResult.validation_report.cleaning_plan.duplicates?.count || 0} rows
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-medium">Outliers:</span>{' '}
+                        <span>
+                          {validationResult.validation_report.cleaning_plan.outliers?.count || 0} values
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-medium">Changes required:</span>{' '}
+                        <span>
+                          {validationResult.validation_report.cleaning_plan.changes_required ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-medium">Changes applied:</span>{' '}
+                        <span>
+                          {validationResult.validation_report.cleaning_plan.changes_done ? 'Yes' : 'No'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}

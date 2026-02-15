@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '../contexts/ApiContext';
 import toast from 'react-hot-toast';
-import { cn, formatNumber, formatPercentage, formatDuration } from '../lib/utils';
+import { cn, formatNumber, formatPercentage, formatDuration, formatRegressionMetric } from '../lib/utils';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   LineChart, Line, PieChart, Pie, Cell, ResponsiveContainer,
@@ -35,20 +35,34 @@ const COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'
 const Results = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { getSessionResults, downloadModel, deleteSession, isLoading } = useApi();
+  const { getSessionResults, downloadModel, deleteSession, predictModel, isLoading } = useApi();
   
   const [results, setResults] = useState<any>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'metrics' | 'visualizations' | 'xai'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'metrics' | 'visualizations' | 'xai' | 'preview'>('overview');
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
   const [isComparing, setIsComparing] = useState(false);
   const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
+  const [previewInputs, setPreviewInputs] = useState<Record<string, any>>({});
+  const [previewResult, setPreviewResult] = useState<any>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
 
   useEffect(() => {
     if (sessionId) {
       loadResults();
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!results?.input_schema) {
+      return;
+    }
+    const nextInputs: Record<string, any> = {};
+    results.input_schema.forEach((column: any) => {
+      nextInputs[column.name] = column.example ?? '';
+    });
+    setPreviewInputs(nextInputs);
+  }, [results]);
 
   const loadResults = async () => {
     try {
@@ -79,6 +93,45 @@ const Results = () => {
       } catch (error) {
         toast.error('Failed to delete session');
       }
+    }
+  };
+
+  const handleRunPreview = async () => {
+    if (!sessionId) {
+      return;
+    }
+
+    const schema = results?.input_schema || [];
+    const inputs: Record<string, any> = {};
+
+    schema.forEach((column: any) => {
+      const rawValue = previewInputs[column.name];
+      if (rawValue === '' || rawValue === undefined) {
+        inputs[column.name] = null;
+        return;
+      }
+
+      const dtype = String(column.dtype || '').toLowerCase();
+      if (dtype.includes('int') || dtype.includes('float') || dtype.includes('double')) {
+        const numericValue = Number(rawValue);
+        inputs[column.name] = Number.isNaN(numericValue) ? null : numericValue;
+      } else {
+        inputs[column.name] = rawValue;
+      }
+    });
+
+    setIsPreviewing(true);
+    try {
+      const response = await predictModel({
+        session_id: sessionId,
+        model_name: selectedModel || results?.best_model,
+        inputs,
+      });
+      setPreviewResult(response);
+    } catch (error) {
+      toast.error('Failed to run preview');
+    } finally {
+      setIsPreviewing(false);
     }
   };
 
@@ -301,6 +354,7 @@ const Results = () => {
               { id: 'metrics', label: 'Detailed Metrics', icon: BarChart3 },
               { id: 'visualizations', label: 'Visualizations', icon: TrendingUp },
               { id: 'xai', label: 'Explainability', icon: Brain },
+              { id: 'preview', label: 'Preview Model', icon: Activity },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -436,7 +490,7 @@ const Results = () => {
                               <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
                                 {problemType === 'classification' 
                                   ? formatNumber(model.metrics.f1)
-                                  : formatNumber(model.metrics.rmse)}
+                                  : formatRegressionMetric(model.metrics.rmse, 'rmse')}
                               </div>
                               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                 {problemType === 'classification' ? 'F1 Score' : 'RMSE'}
@@ -445,7 +499,7 @@ const Results = () => {
                             
                             <div className="text-center p-3 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
                               <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                                {formatNumber(model.cv_mean)}
+                                {formatRegressionMetric(model.cv_mean, 'cv_mean')}
                               </div>
                               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                 CV Mean
@@ -454,7 +508,7 @@ const Results = () => {
                             
                             <div className="text-center p-3 rounded-lg bg-gradient-to-br from-orange-500/10 to-red-500/10 border border-orange-500/20">
                               <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
-                                ±{formatNumber(model.cv_std)}
+                                ±{formatRegressionMetric(model.cv_std, 'cv_std')}
                               </div>
                               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                 CV Std
@@ -484,7 +538,7 @@ const Results = () => {
                                             {typeof value === 'number' 
                                               ? (key.includes('accuracy') || key.includes('precision') || key.includes('recall') || key.includes('f1')
                                                 ? formatPercentage(value as number)
-                                                : formatNumber(value as number))
+                                                : formatRegressionMetric(value as number, key))
                                               : String(value)}
                                           </span>
                                         </div>
@@ -687,11 +741,11 @@ const Results = () => {
                                 <td className="text-right py-3 px-4 font-semibold text-blue-600 dark:text-blue-400">
                                   {formatNumber(model.metrics.r2)}
                                 </td>
-                                <td className="text-right py-3 px-4">{formatNumber(model.metrics.rmse)}</td>
-                                <td className="text-right py-3 px-4">{formatNumber(model.metrics.mae)}</td>
+                                <td className="text-right py-3 px-4">{formatRegressionMetric(model.metrics.rmse, 'rmse')}</td>
+                                <td className="text-right py-3 px-4">{formatRegressionMetric(model.metrics.mae, 'mae')}</td>
                               </>
                             )}
-                            <td className="text-right py-3 px-4">{formatNumber(model.cv_mean)}</td>
+                            <td className="text-right py-3 px-4">{formatRegressionMetric(model.cv_mean, 'cv_mean')}</td>
                             <td className="text-right py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                               {formatDuration(model.training_time)}
                             </td>
@@ -1015,6 +1069,104 @@ const Results = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Preview Tab */}
+              {activeTab === 'preview' && (
+                <div className="space-y-6">
+                  <div className="p-6 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-semibold">Preview Prediction</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Enter feature values to test the trained model on a single row.
+                        </p>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Model: {selectedModel || results?.best_model}
+                      </div>
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      {results?.input_schema?.length ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {results.input_schema.map((column: any) => (
+                            <div key={column.name}>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                {column.name}
+                              </label>
+                              <input
+                                type={String(column.dtype || '').toLowerCase().match(/int|float|double/) ? 'number' : 'text'}
+                                value={previewInputs[column.name] ?? ''}
+                                onChange={(e) =>
+                                  setPreviewInputs(prev => ({
+                                    ...prev,
+                                    [column.name]: e.target.value
+                                  }))
+                                }
+                                placeholder={column.example != null ? String(column.example) : 'Enter value'}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-transparent"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">
+                          Input schema is not available for this session.
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={handleRunPreview}
+                          disabled={isPreviewing || !results?.input_schema?.length}
+                          className={cn(
+                            "px-5 py-2 rounded-lg font-semibold transition-all",
+                            "bg-gradient-to-r from-emerald-500 to-green-600 text-white",
+                            "hover:shadow-lg hover:shadow-emerald-500/30",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                          )}
+                        >
+                          {isPreviewing ? 'Running...' : 'Run Preview'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPreviewResult(null);
+                          }}
+                          className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-blue-500 transition-colors"
+                        >
+                          Clear Result
+                        </button>
+                      </div>
+
+                      {previewResult && (
+                        <div className="mt-4 p-4 rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/20">
+                          <div className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">
+                            Prediction Result
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+                            {String(previewResult.prediction ?? 'N/A')}
+                          </div>
+                          {previewResult.probabilities && (
+                            <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                              {Object.entries(previewResult.probabilities).map(([label, score]) => (
+                                <div key={label} className="flex items-center justify-between">
+                                  <span>{label}</span>
+                                  <span>{formatPercentage(score as number)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {previewResult.missing_inputs?.length > 0 && (
+                            <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+                              Missing values: {previewResult.missing_inputs.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

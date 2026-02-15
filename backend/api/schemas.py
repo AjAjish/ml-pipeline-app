@@ -72,3 +72,10 @@ class EvaluationResults(BaseModel):
 class DownloadRequest(BaseModel):
     session_id: str
     model_name: str
+    format: Optional[str] = "onnx"
+    allow_fallback: bool = True
+
+class PredictRequest(BaseModel):
+    session_id: str
+    model_name: Optional[str] = None
+    inputs: Dict[str, Any]

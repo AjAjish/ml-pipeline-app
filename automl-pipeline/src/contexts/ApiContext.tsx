@@ -16,6 +16,7 @@ interface ApiContextType extends ApiState {
   getAlgorithms: (problemType: 'classification' | 'regression' | 'clustering') => Promise<any>;
   trainModels: (trainingData: any) => Promise<any>;
   getSessionResults: (sessionId: string) => Promise<any>;
+  predictModel: (payload: { session_id: string; model_name?: string; inputs: Record<string, any> }) => Promise<any>;
   downloadModel: (sessionId: string, modelName: string) => Promise<void>;
   clearError: () => void;
   clearTrainingProgress: () => void;
@@ -138,33 +139,21 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     setLoading(true);
     setTrainingProgress(0);
     
-    // Simulate progress updates
-    const progressInterval = setInterval(() => {
-      setTrainingProgress(prev => {
-        const newProgress = prev + Math.random() * 10;
-        return newProgress > 90 ? 90 : newProgress;
-      });
-    }, 500);
-
     try {
+      // Just submit the training request and return session ID
+      // Frontend will handle polling for progress
       const result = await api.trainModels(trainingData);
-      clearInterval(progressInterval);
-      setTrainingProgress(100);
       
-      addSession(result.session_id);
-      toast.success('Training completed successfully!');
-      
+      // Return immediate response with session_id
       return result;
     } catch (error: any) {
-      clearInterval(progressInterval);
       const message = error.message || 'Failed to train models';
       setError(message);
       throw error;
     } finally {
       setLoading(false);
-      setTimeout(() => setTrainingProgress(0), 1000);
     }
-  }, [setLoading, setError, setTrainingProgress, addSession]);
+  }, [setLoading, setError, setTrainingProgress]);
 
   const getSessionResults = useCallback(async (sessionId: string): Promise<any> => {
     setLoading(true);
@@ -179,6 +168,17 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
       setLoading(false);
     }
   }, [setLoading, setError]);
+
+  const predictModel = useCallback(async (payload: { session_id: string; model_name?: string; inputs: Record<string, any> }): Promise<any> => {
+    try {
+      const result = await api.predictModel(payload);
+      return result;
+    } catch (error: any) {
+      const message = error.message || 'Failed to run prediction';
+      setError(message);
+      throw error;
+    }
+  }, [setError]);
 
   const downloadModel = useCallback(async (sessionId: string, modelName: string): Promise<void> => {
     try {
@@ -218,6 +218,7 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     getAlgorithms,
     trainModels,
     getSessionResults,
+    predictModel,
     downloadModel,
     clearError,
     clearTrainingProgress,

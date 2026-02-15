@@ -1,7 +1,7 @@
 # backend/pipelines/training.py
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Tuple, Union, Optional
+from typing import Dict, List, Any, Tuple, Union, Optional, Callable
 import time
 from datetime import datetime
 from sklearn.model_selection import cross_val_score, StratifiedKFold, KFold
@@ -13,12 +13,14 @@ from pipelines.registry import AlgorithmRegistry, ProblemType
 
 class ModelTrainer:
     def __init__(self, problem_type: str, selected_algorithms: List[str], 
-                 test_size: float = 0.2, random_state: int = 42, cv_folds: int = 5):
+                 test_size: float = 0.2, random_state: int = 42, cv_folds: int = 5,
+                 progress_callback: Optional[Callable[[str], None]] = None):
         self.problem_type = ProblemType(problem_type)
         self.selected_algorithms = selected_algorithms
         self.test_size = test_size
         self.random_state = random_state
         self.cv_folds = cv_folds
+        self.progress_callback = progress_callback
         self.algorithm_registry = AlgorithmRegistry()
         if not self.selected_algorithms:
             self.selected_algorithms = self.algorithm_registry.get_algorithm_list(self.problem_type)
@@ -67,6 +69,10 @@ class ModelTrainer:
                     "cv_std": float(np.std(cv_scores)),
                     "timestamp": datetime.now().isoformat()
                 }
+                
+                # Call progress callback if provided
+                if self.progress_callback:
+                    self.progress_callback(algo_name)
                 
                 print(f"  ✓ {algo_name} trained in {training_time:.2f}s (CV score: {np.mean(cv_scores):.3f})")
                 

@@ -22,6 +22,22 @@ export function formatNumber(num: number, decimals = 3): string {
   return Number(num).toFixed(decimals);
 }
 
+export function formatRegressionMetric(num: number, metricName: string = ''): string {
+  if (num === null || num === undefined) return 'N/A';
+  
+  // Format large numbers (RMSE, MAE, CV Mean) with fewer decimals
+  if (num > 100 || ['rmse', 'mae', 'cv_mean', 'cv_std'].some(m => metricName.toLowerCase().includes(m))) {
+    // For large values (>100), use 2 decimals
+    if (num > 10000) {
+      return Number(num).toFixed(2);
+    }
+    return Number(num).toFixed(3);
+  }
+  
+  // For small values (like R²), use standard formatting
+  return Number(num).toFixed(3);
+}
+
 export function formatPercentage(num: number, decimals = 1): string {
   if (num === null || num === undefined) return 'N/A';
   return (num * 100).toFixed(decimals) + '%';

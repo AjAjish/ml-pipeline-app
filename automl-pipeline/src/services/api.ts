@@ -127,10 +127,18 @@ export const trainModels = async (trainingData: {
   random_state?: number;
   cv_folds?: number;
 }): Promise<any> => {
-  // No timeout so the client waits until training completes.
+  // Returns immediately with session_id
   return api.post('/api/train', trainingData, {
-    timeout: 0,
+    timeout: 5000,  // Short timeout since it returns immediately
   });
+};
+
+export const getTrainingProgress = async (sessionId: string): Promise<any> => {
+  return api.get(`/api/training-progress/${sessionId}`);
+};
+
+export const getTrainingResults = async (sessionId: string): Promise<any> => {
+  return api.get(`/api/training-results/${sessionId}`);
 };
 
 export const getVisualizations = async (sessionId: string, plotType = 'all'): Promise<any> => {
@@ -158,7 +166,7 @@ export const downloadModel = async (sessionId: string, modelName: string): Promi
   const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', `${modelName}.joblib`);
+  link.setAttribute('download', `${modelName}.pkl`);
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -169,6 +177,14 @@ export const downloadModel = async (sessionId: string, modelName: string): Promi
 
 export const getSessionResults = async (sessionId: string): Promise<any> => {
   return api.get(`/api/session/${sessionId}`);
+};
+
+export const predictModel = async (payload: {
+  session_id: string;
+  model_name?: string;
+  inputs: Record<string, any>;
+}): Promise<any> => {
+  return api.post('/api/predict', payload);
 };
 
 export const getXAIExplanations = async (

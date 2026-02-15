@@ -43,9 +43,19 @@ class OutlierCapper(BaseEstimator, TransformerMixin):
         return list(input_features)
 
 class DataTransformer:
-    def __init__(self, target_column: Optional[str] = None, problem_type: str = "regression"):
+    def __init__(
+        self,
+        target_column: Optional[str] = None,
+        problem_type: str = "regression",
+        drop_duplicates: bool = True,
+        outlier_capping: bool = True,
+        outlier_factor: float = 1.5
+    ):
         self.target_column = target_column
         self.problem_type = problem_type
+        self.drop_duplicates = drop_duplicates
+        self.outlier_capping = outlier_capping
+        self.outlier_factor = outlier_factor
         self.prepeocessor = None
         self.label_encoder = None
         self.feature_names = None
@@ -57,6 +67,10 @@ class DataTransformer:
         For clustering (unsupervised), returns (X_transformed, None, None, None)
         For classification/regression (supervised), returns (X_train, X_test, y_train, y_test)
         """
+        # Remove duplicate rows before any split/fit
+        if self.drop_duplicates:
+            df = df.drop_duplicates()
+
         # For clustering, no target column needed
         if self.problem_type == "clustering":
             X = df
@@ -81,12 +95,13 @@ class DataTransformer:
         categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
 
         # Create preprocessing pipelines
-        numeric_transformer = Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='median')),
-            # Cap outliers before scaling for more stable feature ranges.
-            ('outliers', OutlierCapper(factor=1.5)),
-            ('scaler', StandardScaler())
-        ])
+        numeric_steps = [
+            ('imputer', SimpleImputer(strategy='mean'))
+        ]
+        if self.outlier_capping:
+            numeric_steps.append(('outliers', OutlierCapper(factor=self.outlier_factor)))
+        numeric_steps.append(('scaler', StandardScaler()))
+        numeric_transformer = Pipeline(steps=numeric_steps)
 
         categorical_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='most_frequent')),
