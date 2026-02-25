@@ -182,12 +182,18 @@ export const explainInstance = async (
   return api.post(`/api/explain-instance/${sessionId}`, features);
 };
 
-export const downloadModel = async (sessionId: string, modelName: string): Promise<void> => {
+export const downloadModel = async (
+  sessionId: string,
+  modelName: string,
+  format: 'onnx' | 'pkl' = 'pkl',
+  customFileName?: string
+): Promise<void> => {
   const response = await axios.post(
     `${API_BASE_URL}/api/download-model`,
     {
       session_id: sessionId,
       model_name: modelName,
+      format,
     },
     {
       responseType: 'blob',
@@ -199,15 +205,27 @@ export const downloadModel = async (sessionId: string, modelName: string): Promi
   
   // Create download link
   const url = window.URL.createObjectURL(new Blob([response.data]));
+  const serverFormat = String(response.headers['x-model-format'] || '').toLowerCase();
+  const extension = serverFormat === 'onnx' ? 'onnx' : 'pkl';
+  const sanitizedFileName = (customFileName || modelName)
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_');
+  const finalFileName = sanitizedFileName || modelName;
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', `${modelName}.pkl`);
+  link.setAttribute('download', `${finalFileName}.${extension}`);
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
-  
-  toast.success(`Model ${modelName} downloaded successfully`);
+
+  const backendWarning = response.headers['x-model-warning'];
+  if (backendWarning) {
+    toast.success(`Model ${modelName} downloaded as ${extension.toUpperCase()} (${backendWarning})`);
+  } else {
+    toast.success(`Model ${modelName} downloaded successfully as ${extension.toUpperCase()}`);
+  }
 };
 
 export const getSessionResults = async (sessionId: string): Promise<any> => {

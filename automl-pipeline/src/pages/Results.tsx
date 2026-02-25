@@ -60,6 +60,10 @@ const Results = () => {
   const [xaiError, setXaiError] = useState<string | null>(null);
   const [xaiSampleIndex, setXaiSampleIndex] = useState(0);
   const [importanceMethod, setImportanceMethod] = useState<'ensemble' | 'shap' | 'model' | 'permutation'>('ensemble');
+  const [downloadModelName, setDownloadModelName] = useState<string>('');
+  const [downloadFormat, setDownloadFormat] = useState<'onnx' | 'pkl'>('pkl');
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [downloadFileName, setDownloadFileName] = useState<string>('');
 
   useEffect(() => {
     if (sessionId) {
@@ -102,6 +106,11 @@ const Results = () => {
       setResults(data);
       if (data.best_model) {
         setSelectedModel(data.best_model);
+        setDownloadModelName(data.best_model);
+        setDownloadFileName(data.best_model);
+      } else if (data.models?.length > 0) {
+        setDownloadModelName(data.models[0].model_name);
+        setDownloadFileName(data.models[0].model_name);
       }
     } catch (error) {
       toast.error('Failed to load results');
@@ -109,12 +118,33 @@ const Results = () => {
     }
   };
 
-  const handleDownload = async (modelName: string) => {
+  const handleDownload = async (modelName: string, format: 'onnx' | 'pkl' = 'pkl') => {
     try {
-      await downloadModel(sessionId!, modelName);
+      await downloadModel(sessionId!, modelName, format);
     } catch (error) {
       toast.error('Failed to download model');
     }
+  };
+
+  const openDownloadModal = (modelName?: string) => {
+    if (modelName) {
+      setDownloadModelName(modelName);
+      setDownloadFileName(modelName);
+    } else {
+      const fallbackModel = downloadModelName || results?.best_model || '';
+      setDownloadFileName(fallbackModel);
+    }
+    setIsDownloadModalOpen(true);
+  };
+
+  const handleDownloadFromModal = async () => {
+    const modelToDownload = downloadModelName || results?.best_model;
+    if (!modelToDownload) {
+      toast.error('Please select a model');
+      return;
+    }
+    await downloadModel(sessionId!, modelToDownload, downloadFormat, downloadFileName || modelToDownload);
+    setIsDownloadModalOpen(false);
   };
 
   const handleDeleteSession = async () => {
@@ -401,7 +431,7 @@ const Results = () => {
               </div>
               
               <button
-                onClick={() => handleDownload(bestModel.model_name)}
+                onClick={() => openDownloadModal(bestModel.model_name)}
                 className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl hover:shadow-blue-500/30 transition-all flex items-center space-x-2 hover:scale-105"
               >
                 <Download className="h-5 w-5" />
@@ -642,7 +672,7 @@ const Results = () => {
                                 
                                 <div className="flex justify-end space-x-3 mt-4">
                                   <button
-                                    onClick={() => handleDownload(model.model_name)}
+                                    onClick={() => openDownloadModal(model.model_name)}
                                     className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all flex items-center space-x-2"
                                   >
                                     <Download className="h-4 w-4" />
@@ -1403,6 +1433,106 @@ const Results = () => {
           </AnimatePresence>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isDownloadModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setIsDownloadModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-semibold flex items-center space-x-2">
+                  <Download className="h-5 w-5 text-blue-500" />
+                  <span>Download Trained Model</span>
+                </h3>
+                <button
+                  onClick={() => setIsDownloadModalOpen(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    Select Model
+                  </label>
+                  <select
+                    value={downloadModelName}
+                    onChange={(e) => {
+                      const nextModelName = e.target.value;
+                      setDownloadModelName(nextModelName);
+                      setDownloadFileName(nextModelName);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                  >
+                    {results.models.map((model: any) => (
+                      <option
+                        key={model.model_name}
+                        value={model.model_name}
+                        className="bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+                      >
+                        {model.model_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    Custom File Name
+                  </label>
+                  <input
+                    type="text"
+                    value={downloadFileName}
+                    onChange={(e) => setDownloadFileName(e.target.value)}
+                    placeholder="Enter file name"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    Select Format
+                  </label>
+                  <select
+                    value={downloadFormat}
+                    onChange={(e) => setDownloadFormat(e.target.value as 'onnx' | 'pkl')}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="pkl" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">PKL (Python pipeline artifact)</option>
+                    <option value="onnx" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">ONNX (portable runtime artifact)</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleDownloadFromModal}
+                  disabled={!downloadModelName && !results.best_model}
+                  className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Download Actual Model</span>
+                </button>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  PKL contains the full trained pipeline. ONNX is a production-ready portable model format.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

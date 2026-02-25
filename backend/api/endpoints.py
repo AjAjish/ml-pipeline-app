@@ -618,6 +618,8 @@ async def download_model(request: DownloadRequest):
     model = session["models"][request.model_name]
     transformer = session["transformer"]
     format_choice = (request.format or "onnx").lower()
+    if format_choice == "pkl":
+        format_choice = "joblib"
 
     def _build_joblib_response():
         model_path = os.path.join(
@@ -641,17 +643,19 @@ async def download_model(request: DownloadRequest):
 
         joblib.dump(model_package, model_path)
 
-        return FileResponse(
+        response = FileResponse(
             model_path,
             media_type="application/octet-stream",
             filename=f"{request.model_name}.pkl"
         )
+        response.headers["X-Model-Format"] = "joblib"
+        return response
 
     if format_choice == "joblib":
         return _build_joblib_response()
 
     if format_choice != "onnx":
-        raise HTTPException(status_code=400, detail="Unsupported format. Use 'onnx' or 'joblib'.")
+        raise HTTPException(status_code=400, detail="Unsupported format. Use 'onnx', 'joblib', or 'pkl'.")
 
     try:
         pipeline = build_inference_pipeline(transformer, model)

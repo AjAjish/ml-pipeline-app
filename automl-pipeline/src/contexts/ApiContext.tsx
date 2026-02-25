@@ -17,7 +17,7 @@ interface ApiContextType extends ApiState {
   trainModels: (trainingData: any) => Promise<any>;
   getSessionResults: (sessionId: string) => Promise<any>;
   predictModel: (payload: { session_id: string; model_name?: string; inputs: Record<string, any> }) => Promise<any>;
-  downloadModel: (sessionId: string, modelName: string) => Promise<void>;
+  downloadModel: (sessionId: string, modelName: string, format?: 'onnx' | 'pkl', customFileName?: string) => Promise<void>;
   getExplainability: (sessionId: string, sampleIndex?: number) => Promise<any>;
   getFeatureImportance: (sessionId: string, method?: 'shap' | 'permutation' | 'model' | 'ensemble') => Promise<any>;
   clearError: () => void;
@@ -182,9 +182,14 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     }
   }, [setError]);
 
-  const downloadModel = useCallback(async (sessionId: string, modelName: string): Promise<void> => {
+  const downloadModel = useCallback(async (
+    sessionId: string,
+    modelName: string,
+    format: 'onnx' | 'pkl' = 'pkl',
+    customFileName?: string
+  ): Promise<void> => {
     try {
-      await api.downloadModel(sessionId, modelName);
+      await api.downloadModel(sessionId, modelName, format, customFileName);
     } catch (error: any) {
       const message = error.message || 'Failed to download model';
       setError(message);
