@@ -34,6 +34,7 @@ const Dashboard = () => {
   const [fileId, setFileId] = useState<string | null>(null);
   const [datasetInfo, setDatasetInfo] = useState<any>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [problemType, setProblemType] = useState<'classification' | 'regression' | 'clustering'>('classification');
   const [selectedAlgorithms, setSelectedAlgorithms] = useState<string[]>([]);
@@ -61,7 +62,13 @@ const Dashboard = () => {
       setDatasetInfo(info);
       // Auto-select last column as target (common convention)
       if (info.columns?.length > 0) {
-        setSelectedTarget(info.columns[info.columns.length - 1].name);
+        const defaultTarget = info.columns[info.columns.length - 1].name;
+        setSelectedTarget(defaultTarget);
+        setSelectedFeatures(
+          info.columns
+            .map((column: any) => column.name)
+            .filter((name: string) => name !== defaultTarget)
+        );
       }
     } catch (error) {
       toast.error('Failed to load dataset info');
@@ -69,13 +76,23 @@ const Dashboard = () => {
   };
 
   const handleValidate = async () => {
+    if (selectedFeatures.length === 0) {
+      toast.error('Please select at least one required feature');
+      return;
+    }
+
     if (!selectedTarget) {
       toast.error('Please select a target column');
       return;
     }
 
+    if (selectedFeatures.includes(selectedTarget)) {
+      toast.error('Target column cannot be part of selected features');
+      return;
+    }
+
     try {
-      const result = await validateDataset(fileId!, selectedTarget);
+      const result = await validateDataset(fileId!, selectedTarget, selectedFeatures);
       setValidationResult(result);
       
       if (result.is_valid) {
@@ -113,6 +130,16 @@ const Dashboard = () => {
       return;
     }
 
+    if (selectedFeatures.length === 0) {
+      toast.error('Please select at least one required feature');
+      return;
+    }
+
+    if (selectedFeatures.includes(selectedTarget)) {
+      toast.error('Target column cannot be part of selected features');
+      return;
+    }
+
     setIsTraining(true);
     toast.loading(`Training ${selectedAlgorithms.length} models... Waiting for completion.`, {
       id: 'training-loading'
@@ -122,6 +149,7 @@ const Dashboard = () => {
       const trainingData = {
         file_id: fileId!,
         target_column: problemType === 'clustering' ? undefined : selectedTarget,
+        selected_features: selectedFeatures,
         problem_type: problemType,
         selected_algorithms: selectedAlgorithms,
         test_size: config.testSize,
@@ -266,8 +294,26 @@ const Dashboard = () => {
             
             <DatasetOverview 
               datasetInfo={datasetInfo}
+              selectedFeatures={selectedFeatures}
+              onFeatureToggle={(feature) => {
+                setValidationResult(null);
+                setSelectedFeatures(prev => {
+                  const next = prev.includes(feature)
+                    ? prev.filter((name) => name !== feature)
+                    : [...prev, feature];
+
+                  if (next.includes(selectedTarget)) {
+                    setSelectedTarget('');
+                  }
+
+                  return next;
+                });
+              }}
               selectedTarget={selectedTarget}
-              onTargetChange={setSelectedTarget}
+              onTargetChange={(target) => {
+                setValidationResult(null);
+                setSelectedTarget(target);
+              }}
             />
             
             <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
@@ -506,6 +552,10 @@ const Dashboard = () => {
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Selected Algorithms</span>
                 <span className="font-semibold">{selectedAlgorithms.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Selected Features</span>
+                <span className="font-semibold">{selectedFeatures.length}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Problem Type</span>

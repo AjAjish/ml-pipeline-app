@@ -33,6 +33,7 @@ class DatasetInfo(BaseModel):
 class TrainingRequest(BaseModel):
     file_id: str
     target_column: Optional[str] = None
+    selected_features: Optional[List[str]] = None
     problem_type: ProblemType
     selected_algorithms: List[str]
     test_size: float = Field(0.2, ge=0.1, le=0.5)

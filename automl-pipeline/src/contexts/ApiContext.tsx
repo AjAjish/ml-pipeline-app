@@ -12,12 +12,14 @@ interface ApiState {
 interface ApiContextType extends ApiState {
   uploadDataset: (file: File) => Promise<any>;
   getDatasetInfo: (fileId: string) => Promise<any>;
-  validateDataset: (fileId: string, targetColumn?: string) => Promise<any>;
+  validateDataset: (fileId: string, targetColumn?: string, selectedFeatures?: string[]) => Promise<any>;
   getAlgorithms: (problemType: 'classification' | 'regression' | 'clustering') => Promise<any>;
   trainModels: (trainingData: any) => Promise<any>;
   getSessionResults: (sessionId: string) => Promise<any>;
   predictModel: (payload: { session_id: string; model_name?: string; inputs: Record<string, any> }) => Promise<any>;
   downloadModel: (sessionId: string, modelName: string) => Promise<void>;
+  getExplainability: (sessionId: string, sampleIndex?: number) => Promise<any>;
+  getFeatureImportance: (sessionId: string, method?: 'shap' | 'permutation' | 'model' | 'ensemble') => Promise<any>;
   clearError: () => void;
   clearTrainingProgress: () => void;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -93,10 +95,10 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     }
   }, [setLoading, setError]);
 
-  const validateDataset = useCallback(async (fileId: string, targetColumn?: string): Promise<any> => {
+  const validateDataset = useCallback(async (fileId: string, targetColumn?: string, selectedFeatures?: string[]): Promise<any> => {
     setLoading(true);
     try {
-      const result = await api.validateDataset(fileId, targetColumn);
+      const result = await api.validateDataset(fileId, targetColumn, selectedFeatures);
       if (result.is_valid) {
         toast.success('Dataset validation passed!');
       } else {
@@ -190,6 +192,31 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     }
   }, [setError]);
 
+  const getExplainability = useCallback(async (sessionId: string, sampleIndex: number = 0): Promise<any> => {
+    try {
+      const result = await api.getExplainability(sessionId, sampleIndex);
+      return result;
+    } catch (error: any) {
+      const message = error.message || 'Failed to load explainability data';
+      setError(message);
+      throw error;
+    }
+  }, [setError]);
+
+  const getFeatureImportance = useCallback(
+    async (sessionId: string, method: 'shap' | 'permutation' | 'model' | 'ensemble' = 'ensemble'): Promise<any> => {
+      try {
+        const result = await api.getFeatureImportance(sessionId, method);
+        return result;
+      } catch (error: any) {
+        const message = error.message || 'Failed to load feature importance';
+        setError(message);
+        throw error;
+      }
+    },
+    [setError]
+  );
+
   const deleteSession = useCallback(async (sessionId: string): Promise<void> => {
     try {
       await api.deleteSession(sessionId);
@@ -220,6 +247,8 @@ export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
     getSessionResults,
     predictModel,
     downloadModel,
+    getExplainability,
+    getFeatureImportance,
     clearError,
     clearTrainingProgress,
     deleteSession,

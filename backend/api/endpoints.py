@@ -1,5 +1,5 @@
 # backend/api/endpoints.py
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Dict, Any, Optional
 import pandas as pd
@@ -9,6 +9,7 @@ import uuid
 import joblib
 from datetime import datetime
 import os
+import logging
 
 from api.schemas import *
 from pipelines.ingestion import DataIngestion
@@ -21,6 +22,8 @@ from utils.file_handlers import save_uploaded_file
 from utils.model_export import build_inference_pipeline, build_initial_types, build_metadata, export_onnx_model
 from skl2onnx.common.data_types import FloatTensorType
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -47,6 +50,65 @@ datasets = {}
 training_sessions = {}
 training_progress = {}  # Track training progress for each session
 training_events = {}  # Event log for each session
+
+
+def _normalize_selected_features(
+    df: pd.DataFrame,
+    selected_features: Optional[List[str]],
+    target_column: Optional[str] = None,
+    problem_type: Optional[str] = None
+) -> List[str]:
+    """Normalize and validate selected feature list against dataset columns."""
+    if selected_features is None:
+        if problem_type == "clustering":
+            return df.columns.tolist()
+        return [col for col in df.columns if col != target_column]
+
+    normalized = [feature for feature in selected_features if feature]
+    if len(normalized) == 0:
+        raise HTTPException(status_code=400, detail="At least one feature must be selected")
+
+    missing = [feature for feature in normalized if feature not in df.columns]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Selected feature columns not found in dataset: {', '.join(missing)}"
+        )
+
+    duplicates = len(normalized) != len(set(normalized))
+    if duplicates:
+        raise HTTPException(status_code=400, detail="Selected feature columns contain duplicates")
+
+    if target_column and target_column in normalized:
+        raise HTTPException(
+            status_code=400,
+            detail="Target column must not be included in selected features"
+        )
+
+    return normalized
+
+
+def _build_training_dataframe(
+    df: pd.DataFrame,
+    selected_features: List[str],
+    target_column: Optional[str],
+    problem_type: str
+) -> pd.DataFrame:
+    """Create training dataframe using selected features and optional target."""
+    if problem_type == "clustering":
+        return df[selected_features].copy()
+
+    if target_column is None:
+        raise HTTPException(status_code=400, detail="Target column is required for supervised learning")
+
+    if target_column not in df.columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Target column '{target_column}' not found in dataset"
+        )
+
+    columns = selected_features + [target_column]
+    return df[columns].copy()
 
 def _serialize_example(value: Any) -> Any:
     if value is None or pd.isna(value):
@@ -108,6 +170,30 @@ def _build_input_schema(df: pd.DataFrame, target_column: Optional[str]) -> List[
             "example": example
         })
     return schema
+
+def _get_xai_transformed_data(session: Dict[str, Any]) -> Optional[pd.DataFrame]:
+    X_transformed = session.get("X_transformed")
+    if X_transformed is not None:
+        return X_transformed
+
+    dataset_id = session.get("dataset_id")
+    transformer = session.get("transformer")
+    if not dataset_id or transformer is None:
+        return None
+
+    dataset_info = datasets.get(dataset_id)
+    if not dataset_info:
+        return None
+
+    df = dataset_info["dataframe"].copy()
+    target_column = session.get("request", {}).get("target_column")
+    if target_column and target_column in df.columns:
+        df = df.drop(columns=[target_column])
+
+    try:
+        return transformer.transform_new_data(df)
+    except Exception:
+        return None
 
 def _run_training_background(session_id: str, request: TrainingRequest, df: pd.DataFrame):
     """Run model training in background and track progress"""
@@ -201,6 +287,8 @@ def _run_training_background(session_id: str, request: TrainingRequest, df: pd.D
             "results": evaluation_results,
             "models": trained_models,
             "transformer": transformer,
+            "dataset_id": request.file_id,
+            "X_transformed": X_train,
             "feature_names": X_train.columns.tolist(),
             "raw_feature_names": transformer.get_feature_names(),
             "input_schema": input_schema,
@@ -308,12 +396,21 @@ async def get_all_datasets():
     return {"datasets": dataset_list}
 
 @router.post("/validate/{file_id}")
-async def validate_dataset(file_id: str, target_column: Optional[str] = None):
+async def validate_dataset(
+    file_id: str,
+    target_column: Optional[str] = None,
+    selected_features: Optional[List[str]] = Query(default=None)
+):
     """Validate dataset"""
     if file_id not in datasets:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     df = datasets[file_id]["dataframe"]
+    normalized_features = _normalize_selected_features(df, selected_features, target_column)
+
+    if target_column and target_column not in df.columns:
+        raise HTTPException(status_code=400, detail=f"Target column '{target_column}' not found in dataset")
+
     validator = DataValidator(df)
     
     validation_results = validator.validate_all(target_column)
@@ -334,6 +431,9 @@ async def validate_dataset(file_id: str, target_column: Optional[str] = None):
     
     return {
         "file_id": file_id,
+        "selected_features": normalized_features,
+        "selected_feature_count": len(normalized_features),
+        "target_column": target_column,
         "is_valid": validation_results["is_valid"],
         "validation_report": validation_results["report"],
         "warnings": validation_results["warnings"],
@@ -369,19 +469,34 @@ async def train_models(request: TrainingRequest, background_tasks: BackgroundTas
     
     # Get dataset
     df = datasets[request.file_id]["dataframe"]
+
+    normalized_features = _normalize_selected_features(
+        df,
+        request.selected_features,
+        request.target_column,
+        request.problem_type
+    )
     
-    # Validate target column for supervised learning
     if request.problem_type != "clustering" and request.target_column not in df.columns:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Target column '{request.target_column}' not found in dataset"
         )
+
+    training_df = _build_training_dataframe(
+        df,
+        normalized_features,
+        request.target_column,
+        request.problem_type
+    )
+
+    request_with_features = request.copy(update={"selected_features": normalized_features})
     
     # Generate session ID
     session_id = str(uuid.uuid4())
     
     # Add training task to background
-    background_tasks.add_task(_run_training_background, session_id, request, df)
+    background_tasks.add_task(_run_training_background, session_id, request_with_features, training_df)
     
     # Return immediately with session ID
     return {
@@ -693,3 +808,256 @@ async def predict_model(request: PredictRequest):
         "probabilities": probabilities,
         "missing_inputs": missing_inputs
     }
+
+
+# ==================== EXPLAINABILITY ENDPOINTS ====================
+
+@router.get("/explanations/{session_id}")
+async def get_model_explanations(session_id: str, sample_index: int = 0):
+    """
+    Get comprehensive model explanations (SHAP, LIME, feature importance)
+    
+    Args:
+        session_id: Training session ID
+        sample_index: Index of sample for local explanations (default: 0)
+        
+    Returns:
+        Global and local explanations with feature importance
+    """
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    try:
+        from pipelines.explainability import ExplainabilityFactory
+        
+        session = training_sessions[session_id]
+        best_model_name = session["results"]["best_model"]
+        best_model = session["models"][best_model_name]
+        
+        X_transformed = _get_xai_transformed_data(session)
+        if X_transformed is None:
+            raise HTTPException(status_code=500, detail="Transformed data not available for this session")
+        feature_names = session.get("feature_names", [f"feature_{i}" for i in range(X_transformed.shape[1])])
+        
+        problem_type = session["request"].get("problem_type", "regression")
+        model_type = "classification" if problem_type == "classification" else "regression"
+        
+        # Generate explanations
+        explanations = ExplainabilityFactory.get_model_explanations(
+            model=best_model,
+            X_data=X_transformed,
+            feature_names=feature_names,
+            model_type=model_type,
+            sample_index=min(sample_index, len(X_transformed) - 1)
+        )
+        
+        # Serialize with custom encoder
+        json_str = json.dumps(explanations, cls=NumpyEncoder)
+        return JSONResponse(content=json.loads(json_str))
+        
+    except Exception as e:
+        logger.error(f"Explanation generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Explanation failed: {str(e)}")
+
+
+@router.get("/feature-importance/{session_id}")
+async def get_feature_importance(session_id: str, method: str = "ensemble"):
+    """
+    Get detailed feature importance analysis
+    
+    Args:
+        session_id: Training session ID
+        method: 'shap', 'permutation', 'model', or 'ensemble' (weighted)
+        
+    Returns:
+        Dictionary of features with importance scores
+    """
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    try:
+        from pipelines.explainability import XAIExplainer
+        
+        session = training_sessions[session_id]
+        best_model_name = session["results"]["best_model"]
+        best_model = session["models"][best_model_name]
+        
+        X_transformed = _get_xai_transformed_data(session)
+        if X_transformed is None:
+            raise HTTPException(status_code=500, detail="Transformed data not available for this session")
+        feature_names = session.get("feature_names", [f"feature_{i}" for i in range(X_transformed.shape[1])])
+        problem_type = session["request"].get("problem_type", "regression")
+        
+        # Create explainer
+        explainer = XAIExplainer(
+            model=best_model,
+            X_data=X_transformed,
+            feature_names=feature_names,
+            model_type=problem_type
+        )
+        
+        # Get feature importance
+        importance = explainer.get_feature_importance(method=method)
+        
+        # Sort by importance
+        sorted_importance = dict(sorted(importance.items(), key=lambda x: abs(x[1]), reverse=True))
+        
+        json_str = json.dumps({
+            'method': method,
+            'importance': sorted_importance,
+            'top_5': dict(list(sorted_importance.items())[:5])
+        }, cls=NumpyEncoder)
+        
+        return JSONResponse(content=json.loads(json_str))
+        
+    except Exception as e:
+        logger.error(f"Feature importance failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Feature importance failed: {str(e)}")
+
+
+@router.post("/explain-instance/{session_id}")
+async def explain_individual_prediction(session_id: str, features: Dict[str, Any]):
+    """
+    Get explanation for a specific prediction
+    
+    Args:
+        session_id: Training session ID
+        features: Dictionary of features for the instance
+        
+    Returns:
+        Local explanation (SHAP, LIME, contributions)
+    """
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    try:
+        from pipelines.explainability import XAIExplainer
+        
+        session = training_sessions[session_id]
+        best_model_name = session["results"]["best_model"]
+        best_model = session["models"][best_model_name]
+        
+        X_transformed = _get_xai_transformed_data(session)
+        if X_transformed is None:
+            raise HTTPException(status_code=500, detail="Transformed data not available for this session")
+        feature_names = session.get("feature_names", [f"feature_{i}" for i in range(X_transformed.shape[1])])
+        problem_type = session["request"].get("problem_type", "regression")
+        
+        # Create sample from features dict
+        feature_order = feature_names
+        X_sample = pd.Series([features.get(fname, 0) for fname in feature_order], index=feature_order)
+        
+        # Create explainer
+        explainer = XAIExplainer(
+            model=best_model,
+            X_data=X_transformed,
+            feature_names=feature_names,
+            model_type=problem_type
+        )
+        
+        # Get local explanation
+        explanation = explainer.generate_local_explanations(X_sample)
+        
+        json_str = json.dumps(explanation, cls=NumpyEncoder)
+        return JSONResponse(content=json.loads(json_str))
+        
+    except Exception as e:
+        logger.error(f"Instance explanation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Instance explanation failed: {str(e)}")
+
+
+@router.get("/model-comparison/{session_id}")
+async def get_model_explanations_all(session_id: str):
+    """
+    Get feature importance comparison across all trained models
+    
+    Returns:
+        Feature importance for each model in the training session
+    """
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    try:
+        from pipelines.explainability import XAIExplainer
+        
+        session = training_sessions[session_id]
+        models = session["models"]
+        X_transformed = _get_xai_transformed_data(session)
+        if X_transformed is None:
+            raise HTTPException(status_code=500, detail="Transformed data not available for this session")
+        feature_names = session.get("feature_names", [f"feature_{i}" for i in range(X_transformed.shape[1])])
+        problem_type = session["request"].get("problem_type", "regression")
+        
+        model_importances = {}
+        
+        for model_name, model in models.items():
+            try:
+                explainer = XAIExplainer(
+                    model=model,
+                    X_data=X_transformed,
+                    feature_names=feature_names,
+                    model_type=problem_type,
+                    max_samples=500  # Limit for performance
+                )
+                
+                importance = explainer.get_feature_importance(method='ensemble')
+                model_importances[model_name] = dict(sorted(
+                    importance.items(),
+                    key=lambda x: abs(x[1]),
+                    reverse=True
+                )[:10])  # Top 10 features
+            except Exception as e:
+                logger.warning(f"Failed to explain {model_name}: {e}")
+                model_importances[model_name] = {'error': str(e)}
+        
+        json_str = json.dumps(model_importances, cls=NumpyEncoder)
+        return JSONResponse(content=json.loads(json_str))
+        
+    except Exception as e:
+        logger.error(f"Model comparison failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Model comparison failed: {str(e)}")
+
+
+@router.get("/clustering-explanation/{session_id}")
+async def get_clustering_explanation(session_id: str):
+    """
+    Get explanations for clustering results
+    
+    Returns:
+        Cluster characteristics, centers, and feature importance per cluster
+    """
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    try:
+        from pipelines.explainability import ClusteringExplainer
+        
+        session = training_sessions[session_id]
+        
+        # Check if clustering was performed
+        if session["request"].get("problem_type") != "clustering":
+            raise HTTPException(status_code=400, detail="Not a clustering session")
+        
+        best_model_name = session["results"]["best_model"]
+        best_model = session["models"][best_model_name]
+        
+        X_transformed = _get_xai_transformed_data(session)
+        if X_transformed is None:
+            raise HTTPException(status_code=500, detail="Transformed data not available for this session")
+        feature_names = session.get("feature_names", [f"feature_{i}" for i in range(X_transformed.shape[1])])
+        
+        # Create clustering explainer
+        cluster_explainer = ClusteringExplainer(best_model, X_transformed, feature_names)
+        
+        explanation = {
+            'characteristics': cluster_explainer.compute_cluster_characteristics(),
+            'centers': cluster_explainer.get_cluster_centers(),
+            'feature_importance_per_cluster': cluster_explainer.get_feature_importance_per_cluster()
+        }
+        
+        json_str = json.dumps(explanation, cls=NumpyEncoder)
+        return JSONResponse(content=json.loads(json_str))
+        
+    except Exception as e:
+        logger.error(f"Clustering explanation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Clustering explanation failed: {str(e)}")

@@ -1,5 +1,7 @@
 # 🚀 AutoML Pro - Intelligent Machine Learning Pipeline
 
+<a id="top"></a>
+
 <div align="center">
 
 ![AutoML Pro](https://img.shields.io/badge/AutoML-Pro-blue?style=for-the-badge&logo=python)
@@ -12,7 +14,7 @@
 
 Transform your data into actionable insights with our cutting-edge AutoML platform.
 
-[Getting Started](#getting-started) • [Features](#features) • [Architecture](#architecture) • [Workflow](#workflow)
+[Getting Started](#installation) • [Features](#key-features) • [Architecture](#system-architecture) • [Workflow](#workflow-guide)
 
 </div>
 
@@ -21,11 +23,14 @@ Transform your data into actionable insights with our cutting-edge AutoML platfo
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Quick Start (5 Minutes)](#quick-start)
+- [How to Understand Results](#understand-results)
 - [Key Features](#key-features)
 - [System Architecture](#system-architecture)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
-- [Installation & Setup](#installation--setup)
+- [New Developer Guide](#new-developer-guide)
+- [Installation & Setup](#installation)
 - [Workflow Guide](#workflow-guide)
 - [API Endpoints](#api-endpoints)
 - [Frontend Components](#frontend-components)
@@ -37,6 +42,7 @@ Transform your data into actionable insights with our cutting-edge AutoML platfo
 
 ---
 
+<a id="overview"></a>
 ## 🎯 Overview
 
 **AutoML Pro** is a comprehensive, web-based machine learning platform that automates the entire ML pipeline from data upload to model evaluation. Designed for both beginners and advanced practitioners, it eliminates the complexity of machine learning while providing powerful insights through interactive visualizations and explainable AI.
@@ -50,8 +56,56 @@ Transform your data into actionable insights with our cutting-edge AutoML platfo
 📥 **Model Export** - Download trained models for production use  
 🎨 **Modern UI** - Beautiful, responsive design with dark mode  
 
+[⬆ Back to Table of Contents](#top)
+
 ---
 
+<a id="quick-start"></a>
+## ⚡ Quick Start (5 Minutes)
+
+If you are new to AutoML Pro, follow this exact path:
+
+1. **Run backend** → `cd backend` then `python app.py`
+2. **Run frontend** → `cd automl-pipeline` then `npm run dev`
+3. Open **http://localhost:5173**
+4. Upload a CSV file on **Home**
+5. Choose a target column on **Dashboard**
+6. Select 2-3 algorithms first (faster feedback)
+7. Click **Start Training**
+8. Review best model + metrics in **Results**
+
+💡 **Beginner tip:** Start with smaller datasets (or fewer algorithms), confirm pipeline works, then scale up.
+
+[⬆ Back to Table of Contents](#top)
+
+---
+
+<a id="understand-results"></a>
+## 🧠 How to Understand Results
+
+Use this cheat sheet to decide which model is actually better:
+
+### For Classification
+- **Accuracy**: Overall correctness
+- **Precision**: Among predicted positives, how many are truly positive
+- **Recall**: Among true positives, how many were found
+- **F1 Score**: Balance between precision and recall
+
+### For Regression
+- **R² Score**: Higher is better (closer to 1)
+- **RMSE**: Lower is better (penalizes larger errors)
+- **MAE**: Lower is better (average absolute error)
+
+### Practical Decision Rule
+- If classes are imbalanced, prioritize **F1/Recall** over plain accuracy.
+- For business forecasting, prioritize **MAE/RMSE** based on tolerance to large errors.
+- Prefer models with stable **cross-validation mean** and low **cv_std**.
+
+[⬆ Back to Table of Contents](#top)
+
+---
+
+<a id="key-features"></a>
 ## ✨ Key Features
 
 ### 1. **Dataset Management**
@@ -116,6 +170,8 @@ Transform your data into actionable insights with our cutting-edge AutoML platfo
 
 ## 🏗️ System Architecture
 
+<a id="system-architecture"></a>
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Frontend (React + TypeScript)          │
@@ -145,6 +201,8 @@ Transform your data into actionable insights with our cutting-edge AutoML platfo
 ---
 
 ## 💻 Technology Stack
+
+<a id="technology-stack"></a>
 
 ### Frontend
 ```
@@ -180,6 +238,8 @@ NumPy              Latest      Numerical Computing
 ---
 
 ## 📁 Project Structure
+
+<a id="project-structure"></a>
 
 ```
 ml-pipeline-app/
@@ -265,6 +325,102 @@ ml-pipeline-app/
 
 ---
 
+<a id="new-developer-guide"></a>
+## 🧭 New Developer Guide
+
+This section helps new contributors understand how the project works end-to-end and where to make changes safely.
+
+### 1) Mental Model: How Data Moves Through the App
+
+1. User uploads CSV in frontend (**Home** page)
+2. Frontend calls backend `POST /api/upload`
+3. Backend stores file in `backend/uploads/` and returns `file_id`
+4. Frontend saves `file_id` in localStorage (`automl_file_id`)
+5. Dashboard fetches dataset info + algorithms
+6. User submits training config to `POST /api/train`
+7. Backend pipeline runs ingestion → validation → transformation → training → evaluation → explainability
+8. Backend returns `session_id` + results summary
+9. Frontend saves `session_id` (`automl_session_id`) and renders Results page
+10. User can download model or delete session
+
+### 2) Request Lifecycle (Frontend → Backend)
+
+- UI action starts in `automl-pipeline/src/pages/*.tsx`
+- API call is centralized in `automl-pipeline/src/services/api.ts`
+- FastAPI route is handled in `backend/api/endpoints.py`
+- Request/response contracts are defined in `backend/api/schemas.py`
+- Core ML logic is delegated to modules in `backend/pipelines/`
+- Output is sent back as JSON and rendered in corresponding frontend page/components
+
+### 3) Backend Pipeline Responsibilities
+
+- `ingestion.py`: Reads and prepares raw CSV data
+- `validation.py`: Checks schema, target validity, missing/invalid patterns
+- `transformation.py`: Encodes/scales features
+- `training.py`: Trains selected algorithms
+- `evaluation.py`: Computes metrics and rankings
+- `explainability.py`: SHAP/LIME + feature importance
+- `registry.py`: Stores session/model artifacts and metadata
+
+### 4) Frontend Page Responsibilities
+
+- `Home.tsx`: Upload + initial dataset intake
+- `DataSet.tsx`: Preview table and column visibility
+- `Dashboard.tsx`: Target + algorithm + hyperparameter setup
+- `Results.tsx`: Model comparison, metrics, visualizations, export
+- `Layout.tsx`: Global navigation and smart routing behavior
+
+### 5) Where to Add New Features
+
+- **New API endpoint**: add route in `backend/api/endpoints.py`, schema in `backend/api/schemas.py`, then API client method in `automl-pipeline/src/services/api.ts`
+- **New ML algorithm**: register model in `backend/models/ml_models.py`, connect training/evaluation paths in pipeline modules
+- **New chart/result widget**: add UI block in `automl-pipeline/src/pages/Results.tsx` or reusable component in `automl-pipeline/src/components/`
+- **New config option**: wire field in `Dashboard.tsx` + `TrainingConfig.tsx`, then include in train payload and backend schema
+
+### 6) Local Development Workflow (Recommended)
+
+1. Run backend first and verify `/api/health`
+2. Run frontend and verify upload screen appears
+3. Test with a small CSV (fast feedback)
+4. Train with 1-2 algorithms first
+5. Confirm results tabs render without console/API errors
+6. Expand to full algorithm set after basic flow passes
+
+### 7) Common Debug Path (Fastest Way)
+
+- If upload fails: check backend logs and CSV format/encoding
+- If dashboard is empty: verify `automl_file_id` exists in localStorage
+- If training fails: inspect `/api/train` payload (target column, problem type, selected algorithms)
+- If results page is blank: verify `automl_session_id` and `/api/results/{session_id}` response
+- If download fails: test `/api/download-model/{session_id}/{model_name}` directly
+
+### 8) Data Contracts New Devs Should Know
+
+- Upload response returns `file_id`, `rows`, `columns`
+- Train request needs: `file_id`, `target_column`, `problem_type`, `selected_algorithms`, `test_size`, `random_state`, `cv_folds`
+- Results response includes `best_model`, per-model metrics, and feature metadata
+
+### 9) New Contributor Checklist (Before PR)
+
+- Keep API schema changes backward-compatible when possible
+- Update README/API docs when changing request or response shape
+- Validate both classification and regression flows if affected
+- Confirm Done/Delete workflow still clears session state correctly
+- Test dark/light mode readability for new UI elements
+
+### 10) Safe First Tasks for New Contributors
+
+- Improve error messages in upload/train/result states
+- Add loading skeletons or clearer empty states
+- Add metric tooltips explaining model quality signals
+- Add frontend validation to prevent avoidable backend errors
+- Improve dataset preview usability for wide tables
+
+[⬆ Back to Table of Contents](#top)
+
+---
+
+<a id="installation"></a>
 ## 🚀 Installation & Setup
 
 ### Prerequisites
@@ -316,6 +472,7 @@ npm run dev
 
 ---
 
+<a id="workflow-guide"></a>
 ## 🔄 Workflow Guide
 
 ### Step 1: Upload Dataset
@@ -433,6 +590,7 @@ Done Button Click
 
 ---
 
+<a id="api-endpoints"></a>
 ## 🔌 API Endpoints
 
 ### Dataset Management
@@ -516,6 +674,7 @@ Response: { message: "Session deleted" }
 
 ---
 
+<a id="frontend-components"></a>
 ## 🎨 Frontend Components
 
 ### Pages
@@ -585,6 +744,7 @@ Response: { message: "Session deleted" }
 
 ---
 
+<a id="configuration"></a>
 ## ⚙️ Configuration
 
 ### Environment Variables
@@ -639,6 +799,7 @@ MAX_TRAINING_TIME = 600            # 10 minutes
 
 ---
 
+<a id="advanced-features"></a>
 ## 🔥 Advanced Features
 
 ### Smart Navigation with Results Link
@@ -739,6 +900,7 @@ window.addEventListener('storage', () => {
 
 ---
 
+<a id="troubleshooting"></a>
 ## 🐛 Troubleshooting
 
 ### Common Issues
@@ -852,6 +1014,7 @@ npm run build
 
 ---
 
+<a id="contributing"></a>
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -862,6 +1025,7 @@ npm run build
 
 ---
 
+<a id="license"></a>
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

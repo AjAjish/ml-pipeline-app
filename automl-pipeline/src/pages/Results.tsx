@@ -35,7 +35,15 @@ const COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'
 const Results = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { getSessionResults, downloadModel, deleteSession, predictModel, isLoading } = useApi();
+  const {
+    getSessionResults,
+    downloadModel,
+    deleteSession,
+    predictModel,
+    getExplainability,
+    getFeatureImportance,
+    isLoading
+  } = useApi();
   
   const [results, setResults] = useState<any>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -46,6 +54,12 @@ const Results = () => {
   const [previewInputs, setPreviewInputs] = useState<Record<string, any>>({});
   const [previewResult, setPreviewResult] = useState<any>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [xaiData, setXaiData] = useState<any>(null);
+  const [xaiImportance, setXaiImportance] = useState<any>(null);
+  const [xaiLoading, setXaiLoading] = useState(false);
+  const [xaiError, setXaiError] = useState<string | null>(null);
+  const [xaiSampleIndex, setXaiSampleIndex] = useState(0);
+  const [importanceMethod, setImportanceMethod] = useState<'ensemble' | 'shap' | 'model' | 'permutation'>('ensemble');
 
   useEffect(() => {
     if (sessionId) {
@@ -63,6 +77,24 @@ const Results = () => {
     });
     setPreviewInputs(nextInputs);
   }, [results]);
+
+  useEffect(() => {
+    if (activeTab !== 'xai' || !sessionId) {
+      return;
+    }
+    if (!xaiData || !xaiImportance) {
+      loadXai();
+    }
+  }, [activeTab, sessionId]);
+
+  useEffect(() => {
+    if (activeTab !== 'xai' || !sessionId) {
+      return;
+    }
+    if (xaiData || xaiImportance) {
+      loadXai(xaiSampleIndex, importanceMethod);
+    }
+  }, [importanceMethod]);
 
   const loadResults = async () => {
     try {
@@ -132,6 +164,29 @@ const Results = () => {
       toast.error('Failed to run preview');
     } finally {
       setIsPreviewing(false);
+    }
+  };
+
+  const loadXai = async (
+    sampleIndex: number = xaiSampleIndex,
+    method: 'ensemble' | 'shap' | 'model' | 'permutation' = importanceMethod
+  ) => {
+    if (!sessionId) {
+      return;
+    }
+    setXaiLoading(true);
+    setXaiError(null);
+    try {
+      const [explanations, importance] = await Promise.all([
+        getExplainability(sessionId, sampleIndex),
+        getFeatureImportance(sessionId, method)
+      ]);
+      setXaiData(explanations);
+      setXaiImportance(importance);
+    } catch (error) {
+      setXaiError('Failed to load explainability data');
+    } finally {
+      setXaiLoading(false);
     }
   };
 
@@ -231,6 +286,18 @@ const Results = () => {
     { metric: 'RMSE (inv)', ...Object.fromEntries(metricsData.map(m => [m.fullName, 100 - (m.rmse / 10)])) },
     { metric: 'MAE (inv)', ...Object.fromEntries(metricsData.map(m => [m.fullName, 100 - (m.mae / 10)])) },
   ];
+
+  const shapSummary = xaiData?.global?.summary_data;
+  const shapSummaryData = shapSummary?.features?.map((feature: string, idx: number) => ({
+    feature,
+    importance: shapSummary.importance[idx]
+  })) || [];
+  const importanceEntries = Object.entries(
+    xaiImportance?.importance || xaiData?.global?.feature_importance_ensemble || {}
+  ).sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number));
+  const localContributions = Object.entries(
+    xaiData?.local?.shap_contributions || {}
+  ).sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number));
 
   return (
     <div className="space-y-8">
@@ -1027,48 +1094,210 @@ const Results = () => {
               {/* XAI Tab */}
               {activeTab === 'xai' && (
                 <div className="space-y-6">
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-purple-500 mb-6">
-                      <Brain className="h-10 w-10 text-white" />
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-semibold flex items-center space-x-2">
+                        <Brain className="h-5 w-5 text-purple-500" />
+                        <span>Explainable AI Insights</span>
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        SHAP and LIME explanations for the best model: {results.best_model}
+                      </p>
                     </div>
-                    <h3 className="text-2xl font-bold mb-3">Explainable AI Features</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">
-                      Get detailed explanations for model predictions using SHAP and LIME. 
-                      Understand feature importance and model decision-making processes.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
-                      <button className="p-6 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white hover:shadow-xl transition-all">
-                        <Sparkles className="h-8 w-8 mx-auto mb-3" />
-                        <h4 className="font-semibold mb-2">SHAP Analysis</h4>
-                        <p className="text-sm opacity-90">Global and local explanations</p>
-                      </button>
-                      <button className="p-6 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 text-white hover:shadow-xl transition-all">
-                        <Target className="h-8 w-8 mx-auto mb-3" />
-                        <h4 className="font-semibold mb-2">LIME Explanations</h4>
-                        <p className="text-sm opacity-90">Instance-level interpretability</p>
-                      </button>
-                      <button className="p-6 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 text-white hover:shadow-xl transition-all">
-                        <BarChart3 className="h-8 w-8 mx-auto mb-3" />
-                        <h4 className="font-semibold mb-2">Feature Importance</h4>
-                        <p className="text-sm opacity-90">Key drivers analysis</p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => loadXai(xaiSampleIndex, importanceMethod)}
+                        className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-purple-500/30 transition-all"
+                      >
+                        Refresh XAI
                       </button>
                     </div>
-                    
-                    {results.feature_names && (
-                      <div className="mt-12 p-6 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 max-w-2xl mx-auto">
-                        <h4 className="font-semibold mb-4 text-left">Top Features</h4>
-                        <div className="space-y-2">
-                          {results.feature_names.slice(0, 10).map((feature: string, index: number) => (
-                            <div key={index} className="flex items-center space-x-3">
-                              <span className="text-sm font-medium text-gray-500 w-6">{index + 1}</span>
-                              <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-8 flex items-center px-3">
-                                <span className="text-sm">{feature}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="p-5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                      <h4 className="font-semibold mb-4 flex items-center space-x-2">
+                        <Sparkles className="h-4 w-4 text-violet-500" />
+                        <span>Controls</span>
+                      </h4>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Sample Index (local explanation)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={xaiSampleIndex}
+                            onChange={(e) => setXaiSampleIndex(Math.max(0, Number(e.target.value) || 0))}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-transparent"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            If index is out of range, the last sample is used.
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Feature Importance Method
+                          </label>
+                          <select
+                            value={importanceMethod}
+                            onChange={(e) => setImportanceMethod(e.target.value as any)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-transparent"
+                          >
+                            <option value="ensemble">Ensemble (recommended)</option>
+                            <option value="shap">SHAP</option>
+                            <option value="model">Model-based</option>
+                            <option value="permutation">Permutation</option>
+                          </select>
+                        </div>
+                        <button
+                          onClick={() => loadXai(xaiSampleIndex, importanceMethod)}
+                          className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+                        >
+                          Run Explainability
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-2 p-5 rounded-xl bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-900/10 dark:to-purple-900/10 border border-violet-200 dark:border-violet-800">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold flex items-center space-x-2">
+                          <BarChart3 className="h-4 w-4 text-violet-600" />
+                          <span>Global Feature Importance</span>
+                        </h4>
+                        <span className="text-xs text-violet-700 dark:text-violet-300 font-medium">
+                          Method: {xaiImportance?.method || importanceMethod}
+                        </span>
+                      </div>
+                      {xaiLoading && (
+                        <div className="py-10 text-center text-sm text-gray-500">
+                          Loading explainability data...
+                        </div>
+                      )}
+                      {xaiError && (
+                        <div className="py-10 text-center text-sm text-red-600">
+                          {xaiError}
+                        </div>
+                      )}
+                      {!xaiLoading && !xaiError && (
+                        <div className="space-y-3">
+                          {importanceEntries.slice(0, 12).map(([feature, score], index) => (
+                            <div key={feature} className="flex items-center space-x-3">
+                              <span className="text-xs text-gray-500 w-6">{index + 1}</span>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="font-medium text-gray-800 dark:text-gray-100 truncate">
+                                    {feature}
+                                  </span>
+                                  <span className="text-gray-600 dark:text-gray-300">
+                                    {formatNumber(score as number)}
+                                  </span>
+                                </div>
+                                <div className="h-2 bg-white/70 dark:bg-gray-800 rounded-full mt-2 overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-violet-500 to-purple-500"
+                                    style={{ width: `${Math.min(100, Math.abs(score as number) * 100)}%` }}
+                                  />
+                                </div>
                               </div>
                             </div>
                           ))}
+                          {importanceEntries.length === 0 && (
+                            <div className="text-sm text-gray-500">No importance data yet.</div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="p-5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                      <h4 className="font-semibold mb-4 flex items-center space-x-2">
+                        <Target className="h-4 w-4 text-emerald-500" />
+                        <span>Local Explanation</span>
+                      </h4>
+                      {xaiData?.local?.prediction ? (
+                        <div className="space-y-4">
+                          <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                            <div className="text-xs text-emerald-700 dark:text-emerald-300">Prediction</div>
+                            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                              {String(xaiData.local.prediction.value ?? xaiData.local.prediction)}
+                            </div>
+                            {xaiData.local.prediction.confidence !== undefined && (
+                              <div className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
+                                Confidence: {formatPercentage(xaiData.local.prediction.confidence)}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="text-sm font-medium mb-2">Top SHAP Contributions</div>
+                            <div className="space-y-2">
+                              {localContributions.slice(0, 8).map(([feature, value]) => (
+                                <div key={feature} className="flex items-center justify-between text-sm">
+                                  <span className="text-gray-600 dark:text-gray-300 truncate">{feature}</span>
+                                  <span className={cn(
+                                    "font-medium",
+                                    (value as number) >= 0 ? "text-emerald-600" : "text-rose-500"
+                                  )}>
+                                    {formatNumber(value as number)}
+                                  </span>
+                                </div>
+                              ))}
+                              {localContributions.length === 0 && (
+                                <div className="text-sm text-gray-500">No local contributions available.</div>
+                              )}
+                            </div>
+                          </div>
+
+                          {xaiData?.local?.lime_explanation?.top_features && (
+                            <div>
+                              <div className="text-sm font-medium mb-2">LIME Highlights</div>
+                              <div className="space-y-2">
+                                {xaiData.local.lime_explanation.top_features.slice(0, 6).map((item: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <span className="text-gray-600 dark:text-gray-300 truncate">{item[0]}</span>
+                                    <span className="font-medium text-gray-800 dark:text-gray-100">{formatNumber(item[1])}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">Run explainability to see local insights.</div>
+                      )}
+                    </div>
+
+                    <div className="p-5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                      <h4 className="font-semibold mb-4 flex items-center space-x-2">
+                        <TrendingUp className="h-4 w-4 text-blue-500" />
+                        <span>SHAP Summary</span>
+                      </h4>
+                      {shapSummaryData.length > 0 ? (
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={shapSummaryData} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                              <XAxis type="number" fontSize={11} stroke="var(--foreground)" />
+                              <YAxis type="category" dataKey="feature" fontSize={11} width={110} stroke="var(--foreground)" />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: 'var(--background)',
+                                  borderColor: 'var(--border)',
+                                  borderRadius: '8px',
+                                  fontSize: '12px'
+                                }}
+                              />
+                              <Bar dataKey="importance" fill="#8B5CF6" radius={[4, 4, 4, 4]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">No SHAP summary data available.</div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

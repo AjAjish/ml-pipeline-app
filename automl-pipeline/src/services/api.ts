@@ -108,9 +108,21 @@ export const getAllDatasets = async (): Promise<any> => {
   return api.get('/api/datasets');
 };
 
-export const validateDataset = async (fileId: string, targetColumn?: string): Promise<any> => {
+export const validateDataset = async (
+  fileId: string,
+  targetColumn?: string,
+  selectedFeatures?: string[]
+): Promise<any> => {
+  const params: Record<string, any> = {};
+  if (targetColumn) {
+    params.target_column = targetColumn;
+  }
+  if (selectedFeatures && selectedFeatures.length > 0) {
+    params.selected_features = selectedFeatures;
+  }
+
   return api.post(`/api/validate/${fileId}`, null, {
-    params: targetColumn ? { target_column: targetColumn } : {},
+    params,
   });
 };
 
@@ -121,6 +133,7 @@ export const getAlgorithms = async (problemType: 'classification' | 'regression'
 export const trainModels = async (trainingData: {
   file_id: string;
   target_column?: string;
+  selected_features?: string[];
   problem_type: 'classification' | 'regression' | 'clustering';
   selected_algorithms: string[];
   test_size?: number;
@@ -145,6 +158,28 @@ export const getVisualizations = async (sessionId: string, plotType = 'all'): Pr
   return api.get(`/api/visualizations/${sessionId}`, {
     params: { plot_type: plotType },
   });
+};
+
+export const getExplainability = async (sessionId: string, sampleIndex: number = 0): Promise<any> => {
+  return api.get(`/api/explanations/${sessionId}`, {
+    params: { sample_index: sampleIndex },
+  });
+};
+
+export const getFeatureImportance = async (
+  sessionId: string,
+  method: 'shap' | 'permutation' | 'model' | 'ensemble' = 'ensemble'
+): Promise<any> => {
+  return api.get(`/api/feature-importance/${sessionId}`, {
+    params: { method },
+  });
+};
+
+export const explainInstance = async (
+  sessionId: string,
+  features: Record<string, any>
+): Promise<any> => {
+  return api.post(`/api/explain-instance/${sessionId}`, features);
 };
 
 export const downloadModel = async (sessionId: string, modelName: string): Promise<void> => {

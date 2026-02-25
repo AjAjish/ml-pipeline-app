@@ -4,17 +4,22 @@ import { cn } from '../lib/utils';
 
 interface DatasetOverviewProps {
   datasetInfo: any;
+  selectedFeatures: string[];
+  onFeatureToggle: (feature: string) => void;
   selectedTarget: string;
   onTargetChange: (target: string) => void;
 }
 
 const DatasetOverview: React.FC<DatasetOverviewProps> = ({
   datasetInfo,
+  selectedFeatures,
+  onFeatureToggle,
   selectedTarget,
   onTargetChange,
 }) => {
   const columns = datasetInfo.columns || [];
   const shape = datasetInfo.shape || { rows: 0, columns: 0 };
+  const availableTargetColumns = columns.filter((column: any) => !selectedFeatures.includes(column.name));
 
   const getDataTypeIcon = (dtype: string) => {
     if (dtype.includes('int') || dtype.includes('float')) return Hash;
@@ -47,13 +52,59 @@ const DatasetOverview: React.FC<DatasetOverviewProps> = ({
         </div>
       </div>
 
+      {/* Required Feature Selection */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Select Required Features
+        </label>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+          Choose the input columns to use for model training.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
+          {columns.map((column: any) => {
+            const Icon = getDataTypeIcon(column.dtype);
+            const isSelected = selectedFeatures.includes(column.name);
+            return (
+              <button
+                key={`feature-${column.name}`}
+                onClick={() => onFeatureToggle(column.name)}
+                className={cn(
+                  "p-3 rounded-lg border transition-all text-left",
+                  isSelected
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                    : "border-gray-200 dark:border-gray-800 hover:border-blue-500"
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Icon className="h-4 w-4 text-gray-500" />
+                    <div>
+                      <div className="font-medium">{column.name}</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        {column.dtype} • {column.unique_count} unique
+                      </div>
+                    </div>
+                  </div>
+                  {column.missing_count > 0 && (
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Target Column Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Select Target Column
         </label>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+          Target must be different from selected features.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1">
-          {columns.map((column: any) => {
+          {availableTargetColumns.map((column: any) => {
             const Icon = getDataTypeIcon(column.dtype);
             return (
               <button
@@ -83,6 +134,11 @@ const DatasetOverview: React.FC<DatasetOverviewProps> = ({
               </button>
             );
           })}
+          {availableTargetColumns.length === 0 && (
+            <div className="col-span-full p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-700 dark:text-amber-300">
+              Select fewer feature columns to keep at least one column available as target.
+            </div>
+          )}
         </div>
       </div>
     </div>
