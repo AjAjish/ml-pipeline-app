@@ -60,6 +60,25 @@ class DataValidator:
                 df_clean[col] = df_clean[col].fillna(modes.iloc[0])
                 imputed_missing += missing_count
 
+        # outliers_capped = 0
+        # numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
+        # for col in numeric_cols:
+        #     series = df_clean[col]
+        #     if series.dropna().empty:
+        #         continue
+
+        #     q1 = np.nanpercentile(series, 25)
+        #     q3 = np.nanpercentile(series, 75)
+        #     iqr = q3 - q1
+        #     lower = q1 - 1.5 * iqr
+        #     upper = q3 + 1.5 * iqr
+        #     outlier_mask = (series < lower) | (series > upper)
+        #     outlier_count = int(outlier_mask.sum())
+        #     if outlier_count > 0:
+        #         df_clean[col] = series.clip(lower, upper)
+        #         outliers_capped += outlier_count
+
+        """outlier using Z-score"""
         outliers_capped = 0
         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
         for col in numeric_cols:
@@ -67,15 +86,16 @@ class DataValidator:
             if series.dropna().empty:
                 continue
 
-            q1 = np.nanpercentile(series, 25)
-            q3 = np.nanpercentile(series, 75)
-            iqr = q3 - q1
-            lower = q1 - 1.5 * iqr
-            upper = q3 + 1.5 * iqr
-            outlier_mask = (series < lower) | (series > upper)
+            mean = series.mean()
+            std = series.std()
+            if std == 0:
+                continue
+
+            z_scores = (series - mean) / std
+            outlier_mask = abs(z_scores) > 3
             outlier_count = int(outlier_mask.sum())
             if outlier_count > 0:
-                df_clean[col] = series.clip(lower, upper)
+                df_clean[col] = series.clip(lower=mean - 3*std, upper=mean + 3*std)
                 outliers_capped += outlier_count
 
         return {
@@ -152,8 +172,32 @@ class DataValidator:
         
         return missing_stats
 
+    # def _detect_outliers(self) -> Dict[str, Any]:
+    #     """Detect outliers using IQR for numeric columns"""
+    #     outlier_info: Dict[str, Any] = {}
+    #     total_outliers = 0
+
+    #     numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+    #     for col in numeric_cols:
+    #         series = self.df[col]
+    #         if series.dropna().empty:
+    #             outlier_info[col] = {"outlier_count": 0}
+    #             continue
+
+    #         q1 = np.nanpercentile(series, 25)
+    #         q3 = np.nanpercentile(series, 75)
+    #         iqr = q3 - q1
+    #         lower = q1 - 1.5 * iqr
+    #         upper = q3 + 1.5 * iqr
+    #         outlier_count = int(((series < lower) | (series > upper)).sum())
+    #         outlier_info[col] = {"outlier_count": outlier_count}
+    #         total_outliers += outlier_count
+
+    #     outlier_info["total_outliers"] = int(total_outliers)
+    #     outlier_info["has_outliers"] = bool(total_outliers > 0)
+    #     return outlier_info
     def _detect_outliers(self) -> Dict[str, Any]:
-        """Detect outliers using IQR for numeric columns"""
+        """Detect outliers using Z-score for numeric columns"""
         outlier_info: Dict[str, Any] = {}
         total_outliers = 0
 
@@ -164,12 +208,14 @@ class DataValidator:
                 outlier_info[col] = {"outlier_count": 0}
                 continue
 
-            q1 = np.nanpercentile(series, 25)
-            q3 = np.nanpercentile(series, 75)
-            iqr = q3 - q1
-            lower = q1 - 1.5 * iqr
-            upper = q3 + 1.5 * iqr
-            outlier_count = int(((series < lower) | (series > upper)).sum())
+            mean = series.mean()
+            std = series.std()
+            if std == 0:
+                outlier_info[col] = {"outlier_count": 0}
+                continue
+
+            z_scores = (series - mean) / std
+            outlier_count = int((abs(z_scores) > 3).sum())
             outlier_info[col] = {"outlier_count": outlier_count}
             total_outliers += outlier_count
 
