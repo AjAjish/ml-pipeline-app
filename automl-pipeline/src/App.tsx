@@ -11,6 +11,7 @@ import DataSet from './pages/DataSet';
 import Results from './pages/Results';
 import Documentation from './pages/Documentation';
 import Algorithm from './pages/Algorithm';
+import DeepLearning from './pages/DeepLearning';
 import NotFound from './pages/NotFound';
 import { ThemeToggle } from './components/ThemeToggle';
 
@@ -34,6 +35,7 @@ function App() {
                 <Route index element={<Home />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="dataset" element={<DataSet />} />
+                <Route path="deep-learning" element={<DeepLearning />} />
                 <Route path="results/:sessionId" element={<Results />} />
                 <Route path="docs" element={<Documentation />} />
                 <Route path="algorithms" element={<Algorithm />} />

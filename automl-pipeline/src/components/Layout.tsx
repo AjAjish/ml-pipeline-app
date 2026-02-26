@@ -15,7 +15,8 @@ import {
   HelpCircle,
   Bell,
   User,
-  TrendingUp
+  TrendingUp,
+  Zap
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ThemeToggle } from './ThemeToggle';
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Dataset', href: '/dataset', icon: Database },
   { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
   { name: 'Algorithms', href: '/algorithms', icon: Cpu },
+  { name: 'Deep Learning', href: '/deep-learning', icon: Zap },
 ];
 
 export default function Layout() {
