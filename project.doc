@@ -414,6 +414,7 @@ flowchart LR
     U[User] --> UC1[Upload Dataset]
     U --> UC2[View Dataset Preview]
     U --> UC3[Configure Training]
+    U --> UC3A[Choose Deep Learning Models]
     U --> UC4[Train Models]
     U --> UC5[Track Progress]
     U --> UC6[Analyze Results]
@@ -424,6 +425,7 @@ flowchart LR
     UC1 --> S[AutoML Pro System]
     UC2 --> S
     UC3 --> S
+    UC3A --> S
     UC4 --> S
     UC5 --> S
     UC6 --> S
@@ -443,20 +445,23 @@ flowchart TD
     C -- Yes --> E[Store file_id]
     E --> F[Preview + Validate]
     F --> G[Select target/problem type]
-    G --> H[Select algorithms]
-    H --> I[Submit training request]
-    I --> J[Background training starts]
-    J --> K[Poll progress endpoint]
-    K --> L{Completed?}
-    L -- No --> K
-    L -- Failed --> M[Show failure reason]
-    L -- Yes --> N[Fetch training results]
-    N --> O[Show metrics/charts/XAI]
-    O --> P{Download model?}
-    P -- Yes --> Q[Export artifact]
-    P -- No --> R[Keep session]
-    Q --> S[End]
-    R --> S
+    G --> H{Training family?}
+    H -- Classic ML --> I[Select algorithms]
+    H -- Deep Learning --> J[Select model: Custom/EfficientNet/MobileNet/ResNet]
+    I --> K[Submit training request]
+    J --> K
+    K --> L[Background training starts]
+    L --> M[Poll progress endpoint]
+    M --> N{Completed?}
+    N -- No --> M
+    N -- Failed --> O[Show failure reason]
+    N -- Yes --> P[Fetch training results]
+    P --> Q[Show metrics/charts]
+    Q --> R{Download model?}
+    R -- Yes --> S1[Export artifact]
+    R -- No --> T[Keep session]
+    S1 --> U1[End]
+    T --> U1
 ```
 
 8.3 Sequence Diagram - Training Request Lifecycle
@@ -467,12 +472,17 @@ sequenceDiagram
     participant Frontend
     participant API as FastAPI
     participant Pipeline as ML Pipeline
+    participant DLP as Deep Learning Pipeline
     participant Store as Session Store
 
     User->>Frontend: Click "Start Training"
-    Frontend->>API: POST /api/train (payload)
+    Frontend->>API: POST /api/train (payload + model_family + selected_dl_model)
     API->>Store: Create session_id + training state
-    API->>Pipeline: Start background training task
+    alt Classic ML selected
+        API->>Pipeline: Start background training task
+    else Deep Learning selected
+        API->>DLP: Start deep learning training task
+    end
     API-->>Frontend: session_id, status=training_started
 
     loop Polling
@@ -480,7 +490,11 @@ sequenceDiagram
         API-->>Frontend: completed_models, current_model, status
     end
 
-    Pipeline->>Store: Save trained models + metrics
+    par Training completion
+        Pipeline->>Store: Save trained ML models + metrics
+    and
+        DLP->>Store: Save deep learning model + metrics
+    end
     Frontend->>API: GET /api/training-results/{session_id}
     API-->>Frontend: ranked model results + best_model
     Frontend-->>User: Render Results Dashboard
@@ -528,10 +542,32 @@ classDiagram
         -_calculate_metrics(X, y_true, y_pred, model_name)
     }
 
+    class DeepLearningRegistry {
+        +get_models()
+        +get_model(name)
+    }
+
+    class DeepLearningTrainer {
+        +train_custom_model(X_train, y_train)
+        +train_efficientnet(X_train, y_train)
+        +train_mobilenet(X_train, y_train)
+        +train_resnet(X_train, y_train)
+        +get_training_history()
+    }
+
+    class DeepLearningModelZoo {
+        +CustomModel
+        +EfficientNet
+        +MobileNet
+        +ResNet
+    }
+
     DataValidator --> DataIngestion
     DataTransformer --> DataValidator
     ModelTrainer --> AlgorithmRegistry
     ModelEvaluator --> ModelTrainer
+    DeepLearningTrainer --> DeepLearningRegistry
+    DeepLearningRegistry --> DeepLearningModelZoo
 ```
 
 8.5 Component Diagram
@@ -554,6 +590,8 @@ flowchart TB
       B5[Evaluation Pipeline]
       B6[Explainability]
       B7[Model Export]
+            B8[Deep Learning Pipeline]
+            B9[DL Model Zoo: Custom/EfficientNet/MobileNet/ResNet]
     end
 
     subgraph Storage
@@ -575,6 +613,8 @@ flowchart TB
     B1 --> B5
     B1 --> B6
     B1 --> B7
+    B1 --> B8
+    B8 --> B9
 
     B1 --> C1
     B1 --> C2
@@ -588,9 +628,29 @@ flowchart TB
 flowchart LR
     User[Browser Client] --> FE[Vite React Frontend :5173]
     FE --> BE[FastAPI Backend :8000]
+    BE --> DL[Deep Learning Runtime (CPU/GPU)]
     BE --> UPL[uploads directory]
     BE --> MOD[models directory]
     BE --> MEM[in-memory session store]
+```
+
+8.7 Deep Learning Model Selection Diagram
+
+```mermaid
+flowchart TD
+    A[Deep Learning Enabled Training] --> B{Select Model Type}
+    B --> C[Custom Model]
+    B --> D[EfficientNet]
+    B --> E[MobileNet]
+    B --> F[ResNet]
+
+    C --> G[Train + Evaluate]
+    D --> G
+    E --> G
+    F --> G
+
+    G --> H[Compare Deep Learning Metrics]
+    H --> I[Store Best Model Artifact]
 ```
 
 ====================================================================
