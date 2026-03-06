@@ -2,6 +2,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Dict, Any, Optional
+from enum import Enum
 import pandas as pd
 import numpy as np
 import json
@@ -132,6 +133,10 @@ def _convert_numpy_types(obj: Any) -> Any:
     # Handle numpy scalar types
     if isinstance(obj, np.generic):
         return obj.item()
+
+    # Convert enums to plain values so serialized artifacts do not depend on API modules.
+    if isinstance(obj, Enum):
+        return obj.value
     
     # Check for NaN in scalar types only (wrapped in try-except for safety)
     try:
@@ -156,6 +161,15 @@ def _convert_numpy_types(obj: Any) -> Any:
     
     # Return as-is for other types
     return obj
+
+
+def _serialize_request_payload(request: TrainingRequest) -> Dict[str, Any]:
+    """Return a JSON-safe request payload for in-memory sessions and model metadata."""
+    if hasattr(request, "model_dump"):
+        payload = request.model_dump()  # Pydantic v2
+    else:
+        payload = request.dict()  # Pydantic v1
+    return _convert_numpy_types(payload)
 
 def _build_input_schema(df: pd.DataFrame, target_column: Optional[str]) -> List[Dict[str, Any]]:
     schema = []
@@ -283,7 +297,7 @@ def _run_training_background(session_id: str, request: TrainingRequest, df: pd.D
         input_schema = _build_input_schema(df, request.target_column)
 
         training_sessions[session_id] = {
-            "request": request.dict(),
+            "request": _serialize_request_payload(request),
             "results": evaluation_results,
             "models": trained_models,
             "transformer": transformer,
@@ -635,8 +649,8 @@ async def download_model(request: DownloadRequest):
             "metadata": {
                 "session_id": request.session_id,
                 "model_name": request.model_name,
-                "problem_type": session["request"]["problem_type"],
-                "target_column": session["request"]["target_column"],
+                "problem_type": str(session["request"].get("problem_type", "")),
+                "target_column": str(session["request"].get("target_column", "")),
                 "training_date": session["timestamp"]
             }
         }
