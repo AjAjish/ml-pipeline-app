@@ -18,7 +18,14 @@ class DataIngestion:
 
     def get_data_info(self, df: pd.DataFrame, file_id: Optional[str] = None) -> Dict[str, Any]:
         """Get comprehensive dataset information"""
-        from api.schemas import DatasetInfo, ColumnInfo
+        # Keep this module installable as a standalone package.
+        # If backend API schemas are unavailable, return plain dictionaries.
+        try:
+            from api.schemas import DatasetInfo, ColumnInfo  # type: ignore
+        except Exception:
+            DatasetInfo = None
+            ColumnInfo = None
+
         columns_info = []
         for col in df.columns:
             raw_value = df[col].iloc[0] if len(df) > 0 else None
@@ -30,25 +37,38 @@ class DataIngestion:
                 example_value = raw_value.isoformat()
             else:
                 example_value = raw_value
-            col_info = ColumnInfo(
-                name=col,
-                dtype=str(df[col].dtype),
-                unique_count=int(df[col].nunique()),
-                missing_count=int(df[col].isnull().sum()),
-                example_value=example_value,
-            )
+            if ColumnInfo is not None:
+                col_info = ColumnInfo(
+                    name=col,
+                    dtype=str(df[col].dtype),
+                    unique_count=int(df[col].nunique()),
+                    missing_count=int(df[col].isnull().sum()),
+                    example_value=example_value,
+                )
+            else:
+                col_info = {
+                    "name": col,
+                    "dtype": str(df[col].dtype),
+                    "unique_count": int(df[col].nunique()),
+                    "missing_count": int(df[col].isnull().sum()),
+                    "example_value": example_value,
+                }
             columns_info.append(col_info)
         
         # Convert dtype keys to strings and values to integers
         dtypes_summary = {str(k): int(v) for k, v in df.dtypes.value_counts().items()}
 
-        return DatasetInfo(
-            file_id=file_id or "",
-            columns=columns_info,
-            shape={'rows': int(df.shape[0]), 'columns': int(df.shape[1])},
-            memory_usage=f"{int(df.memory_usage(deep=True).sum() / 1024 / 1024)} MB",
-            dtypes_summary=dtypes_summary,
-            )
+        payload = {
+            "file_id": file_id or "",
+            "columns": columns_info,
+            "shape": {"rows": int(df.shape[0]), "columns": int(df.shape[1])},
+            "memory_usage": f"{int(df.memory_usage(deep=True).sum() / 1024 / 1024)} MB",
+            "dtypes_summary": dtypes_summary,
+        }
+
+        if DatasetInfo is not None:
+            return DatasetInfo(**payload)
+        return payload
     
     def dedect_problem_type(self, traget_column: str = None) -> str:
         #Detect if problem is classification, regression, or clustering based on target column

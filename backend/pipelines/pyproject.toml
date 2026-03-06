@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ml-pipeline-pipelines"
+version = "0.1.0"
+description = "Reusable ML pipeline components from ml-pipeline-app"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "AjAjish" }
+]
+dependencies = [
+  "numpy>=1.24.3,<2.0",
+  "pandas>=2.1.3",
+  "scikit-learn>=1.3.2",
+  "scipy>=1.11.4",
+  "xgboost>=2.0.0"
+]
+
+[project.optional-dependencies]
+xai = [
+  "matplotlib>=3.8.0",
+  "shap>=0.14.1",
+  "lime>=0.2.0"
+]
+lightgbm = [
+  "lightgbm>=4.1.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/AjAjish/ml-pipeline-app"
+Repository = "https://github.com/AjAjish/ml-pipeline-app"
+
+[tool.setuptools]
+packages = ["pipelines"]
+
+[tool.setuptools.package-dir]
+pipelines = "."
